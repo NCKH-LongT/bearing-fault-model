@@ -1,0 +1,34 @@
+data_dir: data
+manifest: data/manifest.csv
+exclude_list: null
+
+sampling_rate: 25600
+window_seconds: 1.0
+hop_seconds: 0.5
+
+stft:
+  n_fft: 4096
+  hop_length: 1024
+  window: hann
+  log_add: 1.0
+
+input_size: [224, 224]
+num_classes: 3  # healthy, degrading, fault
+
+train:
+  batch_size: 64
+  epochs: 80
+  lr: 3.0e-4
+  weight_decay: 1.0e-2
+  num_workers: 4
+  seed: 42
+  early_stop_patience: 10
+
+optim:
+  use_onecycle: true
+  pct_start: 0.3
+
+log:
+  out_dir: runs/logs_stft
+  save_best_by: macro_f1
+
