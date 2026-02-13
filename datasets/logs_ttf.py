@@ -163,3 +163,27 @@ class LogsTTFDataset(Dataset):
 
         y = item["label"]
         return x, torch.tensor(tfeat, dtype=torch.float32), torch.tensor(y, dtype=torch.long)
+
+    # --- Helpers for multi-window evaluation/inference ---
+    def get_all_windows(self, i: int):
+        item = self.items[i]
+        cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
+        arr = self._read_csv_fast(item["path"], max_rows=cap)  # (N,4)
+        vib = arr[:, :2].astype(np.float32)
+        temp = arr[:, 2:].astype(np.float32)
+        windows = self._make_windows(vib.shape[0])
+        X = []
+        T = []
+        for s, e in windows:
+            vib_w = vib[s:e]
+            temp_w = temp[s:e]
+            x = self.transform(vib_w) if self.transform else vib_w
+            t = self.temp_feature_fn(temp_w) if self.temp_feature_fn else np.zeros(6, dtype=np.float32)
+            X.append(x)
+            T.append(t)
+        if not X:
+            raise IndexError(f"No windows for file: {item['path']}")
+        X = torch.stack(X, dim=0)  # (W,2,H,W)
+        T = torch.tensor(np.stack(T, axis=0), dtype=torch.float32)  # (W,6)
+        y = torch.tensor(item["label"], dtype=torch.long)
+        return X, T, y

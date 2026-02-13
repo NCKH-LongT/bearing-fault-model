@@ -11,21 +11,29 @@ from features.temp_features import temp_stats_window
 from models.resnet2d import ResNet18Small
 
 
-def evaluate_subset(loader, model, device):
-    model.eval()
+def evaluate_filewise(ds, model, device, batch_size=32, agg="mean"):
     ys, ps = [], []
     with torch.no_grad():
-        for xb, tb, yb in loader:
-            xb, tb = xb.to(device), tb.to(device)
-            logits = model(xb, tb)
-            pred = logits.argmax(1).cpu().numpy()
-            ys.append(yb.numpy())
+        for i in range(len(ds)):
+            X, T, y = ds.get_all_windows(i)
+            y = int(y.item())
+            outs = []
+            n = X.shape[0]
+            for s in range(0, n, batch_size):
+                xb = X[s:s+batch_size].to(device)
+                tb = T[s:s+batch_size].to(device)
+                lb = model(xb, tb)
+                outs.append(lb.cpu())
+            logits = torch.cat(outs, dim=0)
+            if agg == "mean":
+                pred = int(logits.mean(0).argmax().item())
+            else:
+                pred = int(np.bincount(logits.argmax(1).numpy()).argmax())
+            ys.append(y)
             ps.append(pred)
     from sklearn.metrics import classification_report, confusion_matrix
-    y = np.concatenate(ys)
-    p = np.concatenate(ps)
-    print(classification_report(y, p, digits=4))
-    print(confusion_matrix(y, p))
+    print(classification_report(ys, ps, digits=4))
+    print(confusion_matrix(ys, ps))
 
 
 def main(cfg_path: str, ckpt_path: str):
@@ -60,8 +68,8 @@ def main(cfg_path: str, ckpt_path: str):
     model.load_state_dict(state["model"])
     model.to(device)
 
-    print("Test set report:")
-    evaluate_subset(test_loader, model, device)
+    print("Test set report (file-wise, mean-agg):")
+    evaluate_filewise(test_ds, model, device, batch_size=cfg["train"]["batch_size"], agg="mean")
 
 
 if __name__ == "__main__":

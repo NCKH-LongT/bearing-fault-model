@@ -35,29 +35,37 @@ def compute_class_weights(manifest_path: str, mapping: dict) -> torch.Tensor:
     return torch.tensor(weights, dtype=torch.float32)
 
 
-def evaluate(model, loader, device):
+def evaluate_filewise(model, ds: LogsTTFDataset, device, batch_size: int = 32, agg: str = "mean"):
+    """Evaluate by aggregating all windows per file (mean logit or majority-vote)."""
     model.eval()
-    all_y, all_p = [], []
-    loss_fn = nn.CrossEntropyLoss(reduction="sum")
-    total_loss = 0.0
-    with torch.no_grad():
-        for xb, tb, yb in loader:
-            xb = xb.to(device)
-            tb = tb.to(device)
-            yb = yb.to(device)
-            logits = model(xb, tb)
-            loss = loss_fn(logits, yb)
-            total_loss += float(loss.item())
-            preds = logits.argmax(dim=1).cpu().numpy()
-            all_p.append(preds)
-            all_y.append(yb.cpu().numpy())
+    ys, ps = [], []
     import numpy as np
     from sklearn.metrics import accuracy_score, f1_score
-    y = np.concatenate(all_y)
-    p = np.concatenate(all_p)
-    acc = accuracy_score(y, p)
-    f1 = f1_score(y, p, average="macro")
-    return total_loss / len(loader.dataset), acc, f1
+    with torch.no_grad():
+        for i in range(len(ds)):
+            X, T, y = ds.get_all_windows(i)
+            y = int(y.item())
+            # batched forward for windows
+            logits_all = []
+            n = X.shape[0]
+            for s in range(0, n, batch_size):
+                xb = X[s:s+batch_size].to(device)
+                tb = T[s:s+batch_size].to(device)
+                lb = model(xb, tb)
+                logits_all.append(lb.cpu())
+            logits = torch.cat(logits_all, dim=0)  # (W,C)
+            if agg == "mean":
+                agg_logits = logits.mean(dim=0)
+                pred = int(agg_logits.argmax().item())
+            else:
+                votes = logits.argmax(dim=1).numpy()
+                # majority
+                pred = int(np.bincount(votes).argmax())
+            ys.append(y)
+            ps.append(pred)
+    acc = accuracy_score(ys, ps)
+    f1 = f1_score(ys, ps, average="macro")
+    return acc, f1
 
 
 def main(cfg_path: str):
@@ -153,9 +161,10 @@ def main(cfg_path: str):
                 scheduler.step()
             running += float(loss.item())
 
-        val_loss, val_acc, val_f1 = evaluate(model, val_loader, device)
+        # file-wise validation
+        val_acc, val_f1 = evaluate_filewise(model, val_ds, device, batch_size=cfg["train"]["batch_size"], agg="mean")
         metric = val_f1 if cfg["log"]["save_best_by"] == "macro_f1" else val_acc
-        print(f"Epoch {epoch+1}/{cfg['train']['epochs']} | train_loss={running/max(1,len(train_loader)):.4f} | val_loss={val_loss:.4f} | val_acc={val_acc:.4f} | val_f1={val_f1:.4f}")
+        print(f"Epoch {epoch+1}/{cfg['train']['epochs']} | train_loss={running/max(1,len(train_loader)):.4f} | val_acc={val_acc:.4f} | val_f1={val_f1:.4f}")
         if metric > best_metric:
             best_metric = metric
             torch.save({"model": model.state_dict(), "cfg": cfg}, best_path)
