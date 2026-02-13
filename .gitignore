@@ -71,3 +71,6 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Data artifacts
+data/*.csv
+!data/manifest.csv
