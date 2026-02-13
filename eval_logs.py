@@ -50,6 +50,8 @@ def main(cfg_path: str, ckpt_path: str):
         transform=te_spec,
         temp_feature_fn=temp_stats_window,
         exclude_list=cfg.get("exclude_list"),
+        limit_files=cfg.get("debug", {}).get("limit_files_test"),
+        seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
     )
     test_loader = DataLoader(test_ds, batch_size=cfg["train"]["batch_size"], shuffle=False, num_workers=cfg["train"]["num_workers"], pin_memory=True)
 
@@ -68,4 +70,3 @@ if __name__ == "__main__":
     ap.add_argument("--ckpt", default="runs/logs_stft/best.pt")
     args = ap.parse_args()
     main(args.config, args.ckpt)
-

@@ -32,6 +32,8 @@ class LogsTTFDataset(Dataset):
         exclude_list: Optional[str] = None,
         transform=None,
         temp_feature_fn=None,
+        limit_files: Optional[int] = None,
+        seconds_cap: Optional[float] = None,
     ):
         assert split in {"train", "val", "test"}
         self.data_dir = data_dir
@@ -41,8 +43,9 @@ class LogsTTFDataset(Dataset):
         self.win = int(round(window_seconds * sampling_rate))
         self.hop = int(round(hop_seconds * sampling_rate))
 
+        self.seconds_cap = seconds_cap
         self.items = self._build_index(
-            manifest_path, split, ttf_split, exclude_list
+            manifest_path, split, ttf_split, exclude_list, limit_files
         )
 
     def _build_index(
@@ -51,6 +54,7 @@ class LogsTTFDataset(Dataset):
         split: str,
         ttf_split: Tuple[float, float],
         exclude_list: Optional[str],
+        limit_files: Optional[int],
     ) -> List[Dict]:
         # Load exclusions
         exclude = set()
@@ -64,8 +68,20 @@ class LogsTTFDataset(Dataset):
         # Read manifest
         rows = []
         with open(manifest_path, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for r in reader:
+            header = f.readline()
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = [p.strip().strip('"') for p in line.split(",")]
+                if len(parts) < 4:
+                    continue
+                r = {
+                    "file": parts[0],
+                    "run_id": parts[1],
+                    "ttf_percent": parts[2],
+                    "fault_type": parts[3].lower(),
+                }
                 if r["file"] in exclude:
                     continue
                 rows.append(r)
@@ -92,16 +108,21 @@ class LogsTTFDataset(Dataset):
             label = self.CLASS_MAP[label_name]
             # record-level entry; windows will be generated on __getitem__ demand
             items.append({"path": path, "label": label})
+        if limit_files is not None:
+            items = items[: int(limit_files)]
         return items
 
     def __len__(self) -> int:
         return len(self.items)
 
     @staticmethod
-    def _read_csv_fast(path: str) -> np.ndarray:
+    def _read_csv_fast(path: str, max_rows: Optional[int] = None) -> np.ndarray:
         # Memory-map read for speed; expect 4 columns, comma-separated, no header
         # Fallback to numpy loadtxt for simplicity
-        return np.loadtxt(path, delimiter=",")
+        kwargs = {"delimiter": ","}
+        if max_rows is not None:
+            kwargs["max_rows"] = int(max_rows)
+        return np.loadtxt(path, **kwargs)
 
     def _make_windows(self, n: int) -> List[Tuple[int, int]]:
         idx = []
@@ -115,7 +136,8 @@ class LogsTTFDataset(Dataset):
 
     def __getitem__(self, i: int):
         item = self.items[i]
-        arr = self._read_csv_fast(item["path"])  # (N,4)
+        cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
+        arr = self._read_csv_fast(item["path"], max_rows=cap)  # (N,4)
         # split channels
         vib = arr[:, :2].astype(np.float32)  # (N,2)
         temp = arr[:, 2:].astype(np.float32)  # (N,2)
@@ -141,5 +163,3 @@ class LogsTTFDataset(Dataset):
 
         y = item["label"]
         return x, torch.tensor(tfeat, dtype=torch.float32), torch.tensor(y, dtype=torch.long)
-
-

@@ -16,11 +16,11 @@ input_size: [224, 224]
 num_classes: 3  # healthy, degrading, fault
 
 train:
-  batch_size: 64
-  epochs: 80
+  batch_size: 32
+  epochs: 5
   lr: 3.0e-4
   weight_decay: 1.0e-2
-  num_workers: 4
+  num_workers: 2
   seed: 42
   early_stop_patience: 10
 
@@ -32,3 +32,8 @@ log:
   out_dir: runs/logs_stft
   save_best_by: macro_f1
 
+debug:
+  limit_files_train: 8
+  limit_files_val: 4
+  limit_files_test: 4
+  seconds_cap: 5.0  # only read first 5 seconds from each file for quick validation

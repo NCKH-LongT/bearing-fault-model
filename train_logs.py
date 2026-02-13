@@ -96,6 +96,8 @@ def main(cfg_path: str):
         transform=tr_spec,
         temp_feature_fn=temp_stats_window,
         exclude_list=cfg.get("exclude_list"),
+        limit_files=cfg.get("debug", {}).get("limit_files_train"),
+        seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
     )
     val_ds = LogsTTFDataset(
         cfg["data_dir"], cfg["manifest"], split="val",
@@ -105,6 +107,8 @@ def main(cfg_path: str):
         transform=te_spec,
         temp_feature_fn=temp_stats_window,
         exclude_list=cfg.get("exclude_list"),
+        limit_files=cfg.get("debug", {}).get("limit_files_val"),
+        seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
     )
 
     train_loader = DataLoader(train_ds, batch_size=cfg["train"]["batch_size"], shuffle=True, num_workers=cfg["train"]["num_workers"], pin_memory=True)
@@ -170,4 +174,3 @@ if __name__ == "__main__":
     ap.add_argument("--config", default="configs/logs_stft.yaml")
     args = ap.parse_args()
     main(args.config)
-

@@ -20,7 +20,8 @@ def stft_log_spectrogram(
     if vib_win.ndim != 2 or vib_win.shape[1] != 2:
         raise ValueError("vib_win must be (win,2)")
 
-    # z-score per channel
+    # sanitize and z-score per channel
+    vib_win = np.nan_to_num(vib_win, nan=0.0, posinf=0.0, neginf=0.0)
     x = (vib_win - vib_win.mean(axis=0, keepdims=True)) / (vib_win.std(axis=0, keepdims=True) + 1e-8)
     x = torch.tensor(x.T, dtype=torch.float32)  # (2, win)
 
@@ -60,4 +61,3 @@ class SpectrogramTransform:
             log_add=self.log_add,
             target_size=self.target_size,
         )
-
