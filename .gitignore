@@ -64,3 +64,15 @@ data/*
 
 # LaTeX minted cache
 _minted-*/
+
+# Local docs to ignore (keep tracked: README.md, ATTRIBUTIONS.md)
+Readme_run.md
+Ablation_Guide.md
+Q&A.md
+Q&A_VN.md
+final_v2.md
+next_plan.md
+docs/archive/
+docs/survival_plan.md
+figures/README.md
+figures/ablation_summary.md
