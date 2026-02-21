@@ -12,8 +12,9 @@ from models.resnet2d import ResNet18Small
 
 def load_model(cfg, ckpt_path, device):
     model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=6)
-    state = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(state["model"])
+    state = torch.load(ckpt_path, map_location=device, weights_only=True)
+    sd = state["model"] if isinstance(state, dict) and "model" in state else state
+    model.load_state_dict(sd)
     model.to(device)
     model.eval()
     return model
@@ -63,9 +64,20 @@ def main():
     ap.add_argument("inputs", nargs="+", help="Path(s) to CSV file(s)")
     args = ap.parse_args()
 
-    with open(args.config, "r", encoding="utf-8") as f:
+    env_cfg = os.environ.get("BF_CONFIG")
+    cfg_path = env_cfg if env_cfg else args.config
+    print(f"Config: {cfg_path}")
+    with open(cfg_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cuda":
+        try:
+            torch.backends.cudnn.benchmark = True
+            print(f"Using GPU: {torch.cuda.get_device_name(0)}")
+        except Exception:
+            pass
+    else:
+        print("Using CPU")
     model = load_model(cfg, args.ckpt, device)
 
     inv_map = {v: k for k, v in LogsTTFDataset.CLASS_MAP.items()}
@@ -77,4 +89,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

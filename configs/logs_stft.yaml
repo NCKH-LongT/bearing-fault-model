@@ -6,6 +6,16 @@ sampling_rate: 25600
 window_seconds: 1.0
 hop_seconds: 0.5
 
+# Split strategy
+# temporal: giữ chia theo TTF (train 0-70, val 70-80, test 80-100)
+# stratified: chia theo lớp (mỗi lớp lấy tỉ lệ train/val/test), hữu ích khi chỉ có 1 run
+split_mode: stratified
+stratified:
+  train: 0.7
+  val: 0.1
+  test: 0.2
+random_seed: 42
+
 stft:
   n_fft: 4096
   hop_length: 1024
@@ -13,16 +23,16 @@ stft:
   log_add: 1.0
 
 input_size: [224, 224]
-num_classes: 3  # healthy, degrading, fault
+num_classes: 3 # healthy, degrading, fault
 
 train:
-  batch_size: 32
-  epochs: 5
+  batch_size: 24
+  epochs: 120
   lr: 3.0e-4
   weight_decay: 1.0e-2
-  num_workers: 2
+  num_workers: 4
   seed: 42
-  early_stop_patience: 10
+  early_stop_patience: 30
 
 optim:
   use_onecycle: true
@@ -33,7 +43,14 @@ log:
   save_best_by: macro_f1
 
 debug:
-  limit_files_train: 8
-  limit_files_val: 4
-  limit_files_test: 4
-  seconds_cap: 5.0  # only read first 5 seconds from each file for quick validation
+  limit_files_train: null
+  limit_files_val: null
+  limit_files_test: null
+  seconds_cap: null # only read first 5 seconds from each file for quick validation
+
+
+# debug:
+#   limit_files_train: 8
+#   limit_files_val: 4
+#   limit_files_test: 4
+#   seconds_cap: 20.0 # only read first 5 seconds from each file for quick validation

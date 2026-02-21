@@ -5,6 +5,7 @@ from typing import Tuple, Dict, List, Optional
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from functools import lru_cache
 
 
 class LogsTTFDataset(Dataset):
@@ -29,6 +30,13 @@ class LogsTTFDataset(Dataset):
         window_seconds: float = 1.0,
         hop_seconds: float = 0.5,
         ttf_split: Tuple[float, float] = (0.0, 0.7),
+        split_mode: str = "temporal",  # "temporal" | "stratified"
+        train_ratio: float = 0.7,
+        val_ratio: float = 0.1,
+        test_ratio: float = 0.2,
+        random_seed: int = 42,
+        min_per_class_val: Optional[int] = None,
+        min_per_class_test: Optional[int] = None,
         exclude_list: Optional[str] = None,
         transform=None,
         temp_feature_fn=None,
@@ -45,7 +53,10 @@ class LogsTTFDataset(Dataset):
 
         self.seconds_cap = seconds_cap
         self.items = self._build_index(
-            manifest_path, split, ttf_split, exclude_list, limit_files
+            manifest_path, split, ttf_split, split_mode,
+            train_ratio, val_ratio, test_ratio, random_seed,
+            min_per_class_val, min_per_class_test,
+            exclude_list, limit_files
         )
 
     def _build_index(
@@ -53,6 +64,13 @@ class LogsTTFDataset(Dataset):
         manifest_path: str,
         split: str,
         ttf_split: Tuple[float, float],
+        split_mode: str,
+        train_ratio: float,
+        val_ratio: float,
+        test_ratio: float,
+        random_seed: int,
+        min_per_class_val: Optional[int],
+        min_per_class_test: Optional[int],
         exclude_list: Optional[str],
         limit_files: Optional[int],
     ) -> List[Dict]:
@@ -86,28 +104,104 @@ class LogsTTFDataset(Dataset):
                     continue
                 rows.append(r)
 
-        # Define split by ttf_percent
-        if split == "train":
-            lo, hi = 0.0, 70.0
-        elif split == "val":
-            lo, hi = 70.0, 80.0
-        else:
-            lo, hi = 80.0, 100.1  # include 100
-
-        lo_ttf, hi_ttf = lo, hi
         items: List[Dict] = []
-        for r in rows:
-            p = float(r["ttf_percent"]) if r["ttf_percent"] != "" else 0.0
-            if not (lo_ttf <= p < hi_ttf):
-                continue
-            path = os.path.join(self.data_dir, r["file"])
-            label_name = r["fault_type"].strip().lower()
-            if label_name not in self.CLASS_MAP:
-                # skip unknown labels in this baseline
-                continue
-            label = self.CLASS_MAP[label_name]
-            # record-level entry; windows will be generated on __getitem__ demand
-            items.append({"path": path, "label": label})
+        if split_mode == "temporal":
+            # Define split by ttf_percent
+            # Prefer provided ttf_split from caller (config), fallback to defaults
+            if ttf_split is not None and len(ttf_split) == 2:
+                lo, hi = float(ttf_split[0]), float(ttf_split[1])
+            else:
+                if split == "train":
+                    lo, hi = 0.0, 70.0
+                elif split == "val":
+                    lo, hi = 70.0, 80.0
+                else:
+                    lo, hi = 80.0, 100.1  # include 100
+
+            lo_ttf, hi_ttf = lo, hi
+            for r in rows:
+                p = float(r["ttf_percent"]) if r["ttf_percent"] != "" else 0.0
+                if not (lo_ttf <= p < hi_ttf):
+                    continue
+                path = os.path.join(self.data_dir, r["file"])
+                label_name = r["fault_type"].strip().lower()
+                if label_name not in self.CLASS_MAP:
+                    continue
+                label = self.CLASS_MAP[label_name]
+                try:
+                    ttf = float(r["ttf_percent"]) if r["ttf_percent"] != "" else 0.0
+                except Exception:
+                    ttf = 0.0
+                items.append({
+                    "path": path,
+                    "label": label,
+                    "file": r["file"],
+                    "ttf_percent": ttf,
+                })
+        else:
+            # Stratified split by class across the whole manifest
+            assert abs((train_ratio + val_ratio + test_ratio) - 1.0) < 1e-6, "Ratios must sum to 1.0"
+            by_cls: Dict[str, List[Dict]] = {}
+            for r in rows:
+                name = r["fault_type"].strip().lower()
+                if name not in self.CLASS_MAP:
+                    continue
+                by_cls.setdefault(name, []).append(r)
+            rng = np.random.RandomState(random_seed)
+            selected: List[Dict] = []
+            for name, lst in by_cls.items():
+                idx = np.arange(len(lst))
+                rng.shuffle(idx)
+                n = len(idx)
+                n_tr = int(round(n * train_ratio))
+                n_va = int(round(n * val_ratio))
+                # ensure coverage
+                mpv = int(min_per_class_val) if (min_per_class_val is not None) else 0
+                mpt = int(min_per_class_test) if (min_per_class_test is not None) else 0
+                if n_va < mpv:
+                    # borrow from train first, then test
+                    extra = mpv - n_va
+                    take_tr = min(extra, n_tr)
+                    n_tr -= take_tr
+                    extra -= take_tr
+                    n_va += take_tr
+                    if extra > 0:
+                        # increase total val by reducing test later
+                        n_va += extra
+                n_te = max(0, n - n_tr - n_va)
+                if n_te < mpt:
+                    # borrow from train first, then val
+                    extra = mpt - n_te
+                    take_tr = min(extra, n_tr)
+                    n_tr -= take_tr
+                    extra -= take_tr
+                    n_te += take_tr
+                    if extra > 0 and n_va > extra:
+                        n_va -= extra
+                        n_te += extra
+                # final clamp to valid bounds
+                n_tr = max(0, min(n_tr, n))
+                n_va = max(0, min(n_va, n - n_tr))
+                n_te = max(0, n - n_tr - n_va)
+                if split == "train":
+                    use = idx[:n_tr]
+                elif split == "val":
+                    use = idx[n_tr:n_tr+n_va]
+                else:
+                    use = idx[n_tr+n_va:]
+                for k in use:
+                    rr = lst[int(k)]
+                    try:
+                        ttf = float(rr["ttf_percent"]) if rr["ttf_percent"] != "" else 0.0
+                    except Exception:
+                        ttf = 0.0
+                    selected.append({
+                        "path": os.path.join(self.data_dir, rr["file"]),
+                        "label": self.CLASS_MAP[name],
+                        "file": rr["file"],
+                        "ttf_percent": ttf,
+                    })
+            items = selected
         if limit_files is not None:
             items = items[: int(limit_files)]
         return items
@@ -116,12 +210,12 @@ class LogsTTFDataset(Dataset):
         return len(self.items)
 
     @staticmethod
-    def _read_csv_fast(path: str, max_rows: Optional[int] = None) -> np.ndarray:
-        # Memory-map read for speed; expect 4 columns, comma-separated, no header
-        # Fallback to numpy loadtxt for simplicity
+    @lru_cache(maxsize=128)
+    def _read_csv_cached(path: str, max_rows_key: Optional[int]) -> np.ndarray:
+        # Cached CSV reader to avoid re-reading the same file multiple times across epochs
         kwargs = {"delimiter": ","}
-        if max_rows is not None:
-            kwargs["max_rows"] = int(max_rows)
+        if max_rows_key is not None and max_rows_key >= 0:
+            kwargs["max_rows"] = int(max_rows_key)
         return np.loadtxt(path, **kwargs)
 
     def _make_windows(self, n: int) -> List[Tuple[int, int]]:
@@ -137,7 +231,8 @@ class LogsTTFDataset(Dataset):
     def __getitem__(self, i: int):
         item = self.items[i]
         cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
-        arr = self._read_csv_fast(item["path"], max_rows=cap)  # (N,4)
+        cap_key = int(cap) if cap is not None else -1
+        arr = self._read_csv_cached(item["path"], cap_key)  # (N,4)
         # split channels
         vib = arr[:, :2].astype(np.float32)  # (N,2)
         temp = arr[:, 2:].astype(np.float32)  # (N,2)
@@ -168,7 +263,8 @@ class LogsTTFDataset(Dataset):
     def get_all_windows(self, i: int):
         item = self.items[i]
         cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
-        arr = self._read_csv_fast(item["path"], max_rows=cap)  # (N,4)
+        cap_key = int(cap) if cap is not None else -1
+        arr = self._read_csv_cached(item["path"], cap_key)  # (N,4)
         vib = arr[:, :2].astype(np.float32)
         temp = arr[:, 2:].astype(np.float32)
         windows = self._make_windows(vib.shape[0])

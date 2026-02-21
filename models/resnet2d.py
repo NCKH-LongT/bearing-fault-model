@@ -52,11 +52,17 @@ class ResNet18Small(nn.Module):
         self.layer4 = nn.Sequential(BasicBlock(128, 256, stride=2), BasicBlock(256, 256))
 
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.temp_proj = nn.Sequential(
-            nn.Linear(temp_feat_dim, 32),
-            nn.ReLU(inplace=True),
-        )
-        self.classifier = nn.Linear(256 + 32, num_classes)
+        self.use_temp = bool(temp_feat_dim and temp_feat_dim > 0)
+        if self.use_temp:
+            self.temp_proj = nn.Sequential(
+                nn.Linear(temp_feat_dim, 32),
+                nn.ReLU(inplace=True),
+            )
+            cls_in = 256 + 32
+        else:
+            self.temp_proj = None
+            cls_in = 256
+        self.classifier = nn.Linear(cls_in, num_classes)
 
     def forward(self, x, temp_feats):
         # x: (B,2,H,W); temp_feats: (B,6)
@@ -67,8 +73,10 @@ class ResNet18Small(nn.Module):
         z = self.layer4(z)
         z = self.pool(z).flatten(1)
 
-        t = self.temp_proj(temp_feats)
-        out = torch.cat([z, t], dim=1)
-        out = self.classifier(out)
+        if self.use_temp:
+            t = self.temp_proj(temp_feats)
+            out = torch.cat([z, t], dim=1)
+            out = self.classifier(out)
+        else:
+            out = self.classifier(z)
         return out
-
