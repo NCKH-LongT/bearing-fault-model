@@ -1,0 +1,66 @@
+\affil[1]{\orgname{FPT University}, \orgaddress{\city{Ho Chi Minh City}, \country{Vietnam}}}
+\affil[2]{\orgname{Ho Chi Minh City Open University}, \orgaddress{\city{Ho Chi Minh City}, \country{Vietnam}}}
+
+\abstract{Condition-based maintenance (CBM) for rotating machinery requires not only detecting faults but also recognizing early degradation to enable timely intervention. This paper studies three-stage bearing health classification (Healthy, Degrading, Fault) using a run-to-failure dataset with two-axis vibration and temperature measurements. To better reflect deployment and avoid overly optimistic estimates caused by temporal correlation, we adopt a \textbf{leakage-aware evaluation} aligned with the time-to-failure (TTF) axis, where training samples come from earlier life segments and testing samples come from later segments. This protocol explicitly mitigates the well-known leakage from \emph{overlapped windows} when random/window-level splits are used. Our approach converts vibration windows into time--frequency representations using short-time Fourier transform (STFT) and learns discriminative patterns with a lightweight 2D CNN. In parallel, temperature channels are summarized into compact trend/statistical descriptors and fused with vibration features via a late-fusion classifier. We report macro-averaged F1 and per-class precision/recall to account for class imbalance across life stages and compute temporal metrics over \emph{present classes} for late-life slices. In a development (file-wise stratified) setting, the model reaches Macro-F1 $\approx$ \textbf{0.7762} with per-class F1 of Healthy $\approx$ \textbf{0.69}, Degrading $\approx$ \textbf{0.64}, and Fault = \textbf{1.00}.
+In a leakage-aware temporal evaluation focused on late-life behavior where only Degrading/Fault are present, the model achieves Accuracy $\approx$ \textbf{0.95} and Macro-F1 $\approx$ \textbf{0.9467} over the present classes. Our study is a \emph{proof of concept} on a single run; we highlight the evaluation protocol and multi-modal fusion as practical choices for realistic deployment and outline validation on additional datasets as future work.}
+
+\keywords{bearing health monitoring, run-to-failure, degradation stage classification, STFT spectrogram, vibration--temperature fusion, temporal split, condition-based maintenance}
+
+\maketitle
+\section{Introduction}
+\label{sec:intro}
+
+Rotating machinery is a core asset in modern industry, and rolling-element bearings are among the most failure-prone components due to continuous mechanical stress, friction, and thermal loading. Unexpected bearing failures can cause unplanned downtime, safety risks, and substantial maintenance costs. Consequently, \emph{condition-based maintenance} (CBM) and \emph{prognostics and health management} (PHM) aim to continuously monitor bearing health and trigger maintenance actions before critical breakdowns.
+
+Vibration-based diagnosis has been widely explored, where deep learning models---especially convolutional neural networks (CNNs)---learn discriminative patterns from raw waveforms or time--frequency representations such as spectrograms. However, practical CBM deployment often needs more than binary ``healthy vs.\ fault'' decisions. In run-to-failure monitoring, an intermediate \emph{degrading} stage is crucial for early warning, but it is also the hardest to recognize due to subtle signal changes, class imbalance, and evolving operating conditions \cite{jung2024dib_rtf}.
+
+A second challenge is \emph{evaluation realism}. Many bearing diagnostic studies rely on random or window-level splits that inadvertently leak temporally adjacent samples across train/test, yielding overly optimistic performance \cite{wheat2024leakage,vieira2024realistic}. In real deployments, models must generalize from earlier-life behavior to later-life degradation patterns that were not observed during training. Therefore, leakage-aware temporal protocols aligned with the time-to-failure (TTF) axis are necessary to estimate true field performance.
+
+Finally, multi-sensor information can improve stage recognition. Temperature is often correlated with friction and abnormal thermal behavior, providing complementary evidence to vibration signals, especially near degradation onset \cite{huang2023esrel_tempvib}. Yet effectively fusing temperature with vibration while keeping the model lightweight remains non-trivial.
+
+In this work, we address three-stage bearing health classification (Healthy, Degrading, Fault) under a run-to-failure setting using vibration STFT representations and temperature trend descriptors \cite{jung2024dib_rtf,jung2024mendeley_rtf}. The key idea is to couple (i) time--frequency CNN features from vibration with (ii) compact temperature trend/statistical descriptors via a late-fusion classifier, and (iii) validate performance using leakage-aware temporal splits aligned with TTF.
+To bridge development and deployment, we follow a two-phase workflow: we first train a baseline model under a file-wise stratified split, and then perform leakage-aware temporal fine-tuning aligned with the TTF axis (train [0,60]\%, val [60,70]\%, test [70,100.1]\%). This design explicitly tests generalization from earlier-life behavior to later-life degradation while reducing the optimistic bias caused by temporally overlapped windows.
+\textbf{Contributions.} This paper makes the following contributions:
+\begin{itemize}
+    \item We formulate a three-stage bearing health classification problem on a run-to-failure dataset with synchronized two-axis vibration and temperature measurements \cite{jung2024dib_rtf,jung2024mendeley_rtf}.
+    \item This two-phase scheme (stratified pre-training $\rightarrow$ temporal fine-tuning) provides a clearer separation between development validation and deployment-oriented testing, preventing temporal leakage across overlapping windows.
+    \item We adopt and emphasize a leakage-aware evaluation protocol aligned with the TTF timeline, which better matches deployment and mitigates optimistic bias from temporal leakage \cite{wheat2024leakage,vieira2024realistic}.
+\end{itemize}
+
+\section{Related Work}
+\label{sec:related_work}
+
+\subsection{Bearing fault diagnosis with deep learning and time--frequency representations}
+Deep learning has become a dominant approach for rolling-element bearing diagnosis due to its ability to learn discriminative patterns directly from sensor signals. A common pipeline transforms vibration windows into 2D time--frequency images (e.g., STFT spectrograms or wavelet scalograms) and applies 2D CNNs originally developed for vision tasks. Verstraete et al.~\cite{verstraete2017tf} demonstrated that time--frequency image analysis combined with CNNs can achieve strong fault diagnosis performance and influenced subsequent spectrogram/scalogram-based methods.
+More recent studies continue to explore CNN architectures and feature learning strategies for robust vibration-based fault recognition \cite{magar2020faultnet}.
+
+While these methods are effective for identifying explicit fault signatures, run-to-failure monitoring often requires recognizing an intermediate degradation stage in addition to the final fault stage. This setting introduces higher ambiguity and stronger class imbalance, making Degrading detection more challenging than binary fault classification.
+
+We adapt parts of an open-source CNN implementation for bearing diagnosis~\cite{mdzalfirdausi_paderborn_repo}, and extend it with temperature fusion, STFT normalization tailored to run-to-failure windows, and leakage-aware TTF-aligned evaluation.
+\subsection{Run-to-failure data and degradation-stage recognition}
+Run-to-failure datasets provide realistic progression of health states but also raise challenges in label definition and evaluation. The bearing run-to-failure dataset used in this work includes vibration and temperature streams over the asset lifetime \cite{jung2024dib_rtf,jung2024mendeley_rtf}. Prior studies on run-to-failure monitoring frequently rely on stage labels derived from time or degradation indicators, aiming to approximate early-life, mid-life, and late-life behaviors. However, the intermediate stage is often under-represented and may overlap with healthy behavior, which motivates integrating complementary sensing modalities and carefully designing evaluation protocols.
+\paragraph{Stage-based monitoring vs. RUL prognostics.}
+Beyond fault recognition, PHM research often targets remaining useful life (RUL) estimation using regression or sequence models. However, reliable RUL supervision and consistent degradation indicators are not always available in practical run-to-failure experiments. As an alternative, stage-based health classification provides actionable early-warning signals with weaker supervision, which aligns with many CBM decision processes. In this work, we focus on three-stage health recognition to support timely maintenance actions under realistic labeling constraints.
+\subsection{Evaluation protocols and data leakage in bearing diagnostics}
+A growing body of work highlights that random splitting of highly overlapped windows can cause severe information leakage: temporally adjacent windows share similar spectral content, and if they appear in both training and testing, performance can be inflated \cite{wheat2024leakage}. Vieira et al.~\cite{vieira2024realistic} further argue for more realistic evaluation strategies in machine diagnostics that reflect the operational reality of future data being unseen at training time. These findings motivate leakage-aware temporal splits aligned with the time-to-failure axis, which we adopt as a primary evaluation protocol to better approximate deployment performance.
+In addition to temporal leakage, generalization across different bearings or operating conditions (domain shift) remains challenging in machine diagnostics. While fully bearing-wise evaluation may require larger cross-unit coverage, our TTF-aligned temporal protocol is a necessary first step toward deployment realism by preventing near-duplicate windows from leaking across splits.
+\subsection{Multi-sensor fusion with temperature and vibration}
+Multi-sensor learning is a practical direction for improving robustness, as temperature may capture thermal effects associated with friction, lubrication issues, or abnormal contact conditions. Huang et al.~\cite{huang2023esrel_tempvib} showed that combining temperature-related signals with vibration features can improve diagnostic performance compared with single-sensor baselines. Inspired by this direction, we fuse vibration time--frequency CNN features with compact temperature trend/statistical descriptors, aiming to improve Degrading-stage recognition in run-to-failure monitoring while keeping the model lightweight.
+
+\section{Dataset and Problem Definition}
+\label{sec:data_problem}
+
+\subsection{Run-to-failure dataset}
+We use the run-to-failure bearing dataset provided by Jung et al.~\cite{jung2024dib_rtf,jung2024mendeley_rtf}. 
+The dataset contains \textbf{one run} (\texttt{RUNS=1}) consisting of \textbf{129 files} (\texttt{FILES=129}). 
+Two-axis vibration signals are sampled at \textbf{25.6 kHz}.
+
+\subsection{Segmentation and feature construction}
+We segment vibration into fixed-length windows of \textbf{1.0 s} (25{,}600 samples) with \textbf{50\% overlap} (hop = 0.5 s = 12{,}800 samples). 
+Each vibration window is converted to a time--frequency representation using STFT with $n\_fft \in \{2048,4096\}$ and $hop\_length \in \{512,1024\}$. 
+The resulting spectrogram is resized to \textbf{$160\times160$} for the development setting and \textbf{$224\times224$} for the temporal fine-tuning setting.
+
+In addition, we extract temperature features from \textbf{two channels}. 
+For each window, we compute \textbf{six} temperature descriptors: mean, standard deviation, and slope for each channel (total 6-D).
+
+\subsection{Three-stage health definition by normalized lifetime}

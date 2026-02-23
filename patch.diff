@@ -1,0 +1,12 @@
+*** Begin Patch
+*** Update File: main.tex
+@@
+-\title[Three-Stage Bearing Health Classification]{Three-Stage Bearing Health Classification Using Vibration STFT and Temperature Trends in a Run-to-Failure Setting}
++\title[Three-Stage Bearing Health Classification]{Three-Stage Bearing Health Classification Using Vibration Short-Time Fourier Transform and Temperature Trends in a Run-to-Failure Setting}
+@@
+-\author*[1]{\fnm{Long} \sur{Truong}}\email{longt5@fpt.edu.vn}
++\author[1]{\fnm{Long} \sur{Truong}}\email{longt5@fpt.edu.vn}
+@@
+-\author[2]{\fnm{Phu~Le} \sur{Nguyen}}\email{phunguyen07d1@gmail.com}
++\author*[2]{\fnm{Phu~Le} \sur{Nguyen}}\email{phunguyen07d1@gmail.com}
+*** End Patch
