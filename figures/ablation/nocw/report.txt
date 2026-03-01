@@ -1,0 +1,10 @@
+              precision    recall  f1-score   support
+
+     healthy     0.0000    0.0000    0.0000         0
+   degrading     0.7000    1.0000    0.8235         7
+       fault     1.0000    0.3077    0.4706        13
+
+    accuracy                         0.5500        20
+   macro avg     0.5667    0.4359    0.4314        20
+weighted avg     0.8950    0.5500    0.5941        20
+

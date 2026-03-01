@@ -72,51 +72,68 @@ def quality_ok(macro_f1: float, per_cls: Dict[str, float], min_macro: float, min
 
 
 def propose_next_cfg(cfg: Dict[str, Any], round_idx: int, last_macro: float, early_stopped: bool, resume_ckpt: str | None) -> Dict[str, Any]:
-    """Heuristic tweaks across rounds. Returns a shallow-cloned cfg with changes."""
+    """Heuristic search across rounds: vary STFT/input, LR, class-weights, label smoothing, and val window cap.
+    Returns a shallow-cloned cfg with changes."""
     import copy
     new_cfg = copy.deepcopy(cfg)
     tr = new_cfg.setdefault("train", {})
     opt = new_cfg.setdefault("optim", {})
+    st = new_cfg.setdefault("stft", {})
 
     # Ensure log section
     lg = new_cfg.setdefault("log", {})
     out_dir = lg.get("out_dir", "runs/auto")
     lg["out_dir"] = out_dir
 
-    # Round-specific adjustments
-    if round_idx == 0:
-        # Baseline: balanced sampling on, turn off class weights to avoid double-counting
-        tr["balanced_sampling"] = True
-        tr["use_class_weights"] = False
-        tr["early_stop"] = True
-        tr["early_stop_patience"] = max(int(tr.get("early_stop_patience", 12)), 15)
-        tr["val_max_windows"] = tr.get("val_max_windows", 50) or 50
-        opt["use_onecycle"] = False
-        tr["lr"] = float(tr.get("lr", 2e-4))
-    elif round_idx == 1:
-        # If vẫn kém, ưu tiên tăng patience (không tăng epochs) và tinh chỉnh LR
-        if early_stopped:
-            tr["early_stop_patience"] = max(int(tr.get("early_stop_patience", 15)), 20)
-        # nhẹ nhàng tăng/giảm LR để thoát valley
-        tr["lr"] = float(tr.get("lr", 2e-4)) * 1.25
-    elif round_idx == 2:
-        # Giữ epochs, thử giảm nhiễu val: dùng toàn bộ cửa sổ trong vài vòng
-        tr["val_max_windows"] = 0
-        # bật lại 50 ở vòng sau sẽ do script đặt lại nếu cần
-    elif round_idx == 3:
-        # Thử bật class weights nếu vẫn lệch
-        tr["use_class_weights"] = True
-    else:
-        # Last resort: reduce input complexity một chút
-        st = new_cfg.setdefault("stft", {})
-        st["n_fft"] = min(int(st.get("n_fft", 4096)), 2048)
-        st["hop_length"] = min(int(st.get("hop_length", 1024)), 512)
-        new_cfg["input_size"] = [160, 160]
+    # Baseline guards
+    tr["balanced_sampling"] = True
+    tr["early_stop"] = True
+    opt["use_onecycle"] = False
 
-    # Nếu muốn resume từ vòng trước: nạp init_from và hạ LR nhẹ để fine-tune
+    # Round index to zero-based for cycling
+    k = max(0, int(round_idx) - 1)
+
+    # Option pools
+    res_opts = [
+        {"n_fft": 4096, "hop_length": 1024, "input": [224, 224]},
+        {"n_fft": 2048, "hop_length": 512, "input": [160, 160]},
+    ]
+    valmax_opts = [50, 0]
+    cw_opts = [False, True]
+    ls_opts = [0.05, 0.0, 0.07]
+    lr_factors = [1.0, 1.25, 0.75, 1.5]
+
+    # Derive choices for this round
+    res_choice = res_opts[k % len(res_opts)]
+    valmax_choice = valmax_opts[(k // 1) % len(valmax_opts)]
+    cw_choice = cw_opts[(k // 2) % len(cw_opts)]
+    ls_choice = ls_opts[(k // 3) % len(ls_opts)]
+    lr_factor = lr_factors[(k // 1) % len(lr_factors)]
+
+    # Apply
+    st["n_fft"] = res_choice["n_fft"]
+    st["hop_length"] = res_choice["hop_length"]
+    new_cfg["input_size"] = res_choice["input"]
+
+    # LR around the base value
+    base_lr = float(tr.get("lr", 2e-4))
+    tr["lr"] = base_lr * lr_factor
+
+    # Validation cap, class weights, label smoothing
+    tr["val_max_windows"] = valmax_choice
+    tr["use_class_weights"] = cw_choice
+    tr["label_smoothing"] = ls_choice
+
+    # Patience: nudge up if early stopped
+    if early_stopped:
+        tr["early_stop_patience"] = max(int(tr.get("early_stop_patience", 15)), 20)
+    else:
+        tr["early_stop_patience"] = int(tr.get("early_stop_patience", 15))
+
+    # If resume is requested and available: init from previous best and clamp LR upper bound
     if resume_ckpt and os.path.exists(resume_ckpt):
         tr["init_from"] = resume_ckpt
-        tr["lr"] = min(float(tr.get("lr", 2e-4)), 2.0e-4)
+        tr["lr"] = min(float(tr.get("lr", base_lr)), 2.0e-4)
 
     return new_cfg
 
@@ -128,9 +145,9 @@ def discover_existing_rounds(base_out_dir: str) -> int:
         return 0
     mx = 0
     for n in names:
-        if n.startswith("auto_r"):
+        if n.startswith("auto_ft_r"):
             try:
-                k = int(n.replace("auto_r", ""))
+                k = int(n.replace("auto_ft_r", ""))
                 mx = max(mx, k)
             except Exception:
                 pass
@@ -169,7 +186,7 @@ def main():
 
     # If continuing, load last round's config as starting point and seed best_metric from its eval
     if start_round > 1:
-        last_dir = os.path.join(base_out_dir, f"auto_r{start_round-1}")
+        last_dir = os.path.join(base_out_dir, f"auto_ft_r{start_round-1}")
         last_cfg = os.path.join(last_dir, "config.yaml")
         if os.path.exists(last_cfg):
             cfg_r = load_yaml(last_cfg)
@@ -196,7 +213,7 @@ def main():
         print(f"=== Round {rnum}/{start_round + remaining - 1} ===")
 
         # Per-round output directory to keep evals separated
-        round_out_dir = os.path.join(base_out_dir, f"auto_r{rnum}")
+        round_out_dir = os.path.join(base_out_dir, f"auto_ft_r{rnum}")
         cfg_r.setdefault("log", {})["out_dir"] = round_out_dir
 
         # Write a derived config per round inside its own folder

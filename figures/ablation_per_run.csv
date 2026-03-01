@@ -1,0 +1,4 @@
+run_dir,label_base,seed,macro_f1,f1_healthy,f1_degrading,f1_fault
+temporal_broad,temporal_broad,,0.3324,0.0,0.0741,0.9231
+temporal_late,temporal_late,,0.32,0.0,0.0,0.96
+temporal_scratch_s42,temporal_scratch,42,0.1667,0.0,0.0,0.5

@@ -262,7 +262,8 @@ def main(cfg_path: str):
             pct_start=cfg["optim"].get("pct_start", 0.3),
         )
     else:
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, cfg["train"]["epochs"]))
+        # Use per-batch stepping for Cosine by setting T_max to total_steps
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, total_steps))
 
     best_metric = -1.0
     best_path = os.path.join(cfg["log"]["out_dir"], "best.pt")
