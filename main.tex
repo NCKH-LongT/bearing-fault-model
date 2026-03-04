@@ -33,7 +33,7 @@
 \affil[1]{\orgname{FPT University}, \orgaddress{\city{Ho Chi Minh City}, \country{Vietnam}}}
 \affil[2]{\orgname{Faculty of Engineering and Technology, Nguyen Tat Thanh University}, \orgaddress{\city{Ho Chi Minh City}, \country{Vietnam}}}
 
-\abstract{A lightweight multi-modal pipeline is presented for three-stage bearing health classification in run-to-failure settings. Vibration is converted to STFT spectrograms for a compact 2D CNN, and a minimal 6-D temperature trend/statistics descriptor is fused at a late head. Two design choices make the method practical and robust: per-frequency (across-time) normalization that stabilizes spectrogram brightness across windows, and file-wise mean-logit aggregation for stable decisions. A leakage-aware, time-to-failure\,\mbox{(TTF)}-aligned protocol and a two-phase training scheme (stratified pre-training then temporal fine-tuning) ground evaluation in deployment reality and reduce temporal leakage. The approach is simple (few parameters, AMP-friendly), efficient, and improves late-life discrimination compared with vibration-only baselines on a public run-to-failure dataset, providing actionable early warning while remaining easy to deploy.}
+\abstract{In this work, the three-stage bearing health classification (Healthy, Degrading, Fault) under a run-to-failure setting is addressed using vibration short-time Fourier transform (STFT) representations and compact temperature trend descriptors. A lightweight multi-modal pipeline is presented in which per-frequency (across-time) normalization stabilizes spectrogram brightness and a late head fuses a minimal 6-D temperature descriptor with vibration features. Evaluation is conducted with a leakage-aware, time-to-failure\,\mbox{(TTF)}-aligned protocol and a two-phase workflow (stratified pre-training followed by temporal fine-tuning) to mitigate temporal leakage and reflect deployment. On a stratified development split, Macro-F1 is $\approx$ 0.7762. Under leakage-aware temporal testing, strong late-life discrimination is achieved (Fault F1 $=0.9600$ on 90--100.1\% TTF), and full-lifecycle performance reaches Accuracy $=0.8915$ and Macro-F1 $=0.8739$ with majority vote, demonstrating clear gains over a vibration-only baseline.}
 
 \keywords{bearing health monitoring, run-to-failure, degradation stage classification, STFT spectrogram, vibration--temperature fusion, temporal split, condition-based maintenance}
 
@@ -41,29 +41,26 @@
 \section{Introduction}
 \label{sec:intro}
 
-This work targets two practical challenges in run-to-failure bearing monitoring: (i) reliable recognition of the \emph{degrading} stage—often subtle and class-imbalanced—and (ii) \emph{leakage-aware} evaluation that reflects deployment reality rather than optimistic window-level splits \cite{jung2024dib_rtf,kaufman2012leakage,bergmeir2012timeseriescv}. We adopt a lightweight multi-sensor approach where vibration provides time--frequency evidence and temperature contributes complementary trends near degradation onset \cite{baltrusaitis2019multimodal}. We couple (i) STFT-based CNN features with (ii) a compact temperature descriptor via late fusion, and (iii) validate using a contiguous, TTF-aligned protocol.
-To bridge development and deployment, we follow a two-phase workflow: file-wise stratified training for model selection, then temporal fine-tuning aligned with the TTF axis (train [0,60]\%, val [60,70]\%, test [70,100.1]\%) to test generalization from earlier to later life while reducing overlapped-window leakage.
+This work targets two practical challenges in run-to-failure bearing monitoring: (i) reliable recognition of the \emph{degrading} stage—often subtle and class-imbalanced—and (ii) \emph{leakage-aware} evaluation that reflects deployment reality rather than optimistic window-level splits \cite{jung2024dib_rtf,kaufman2012leakage,bergmeir2012timeseriescv}. A lightweight multi-sensor approach is adopted in which vibration provides time--frequency evidence and temperature contributes complementary trends near degradation onset \cite{baltrusaitis2019multimodal}. STFT-based CNN features are coupled with a compact temperature descriptor via late fusion, and validation is conducted using a contiguous, TTF-aligned protocol.
+To bridge development and deployment, a two-phase workflow is followed: file-wise stratified training for model selection, then temporal fine-tuning aligned with the TTF axis (train [0,60]\%, val [60,70]\%, test [70,100.1]\%) to test generalization from earlier to later life while reducing overlapped-window leakage.
 \textbf{Contributions.} This paper makes the following contributions, focusing on what is new and practically useful:
 \begin{itemize}
     \item A compute-efficient multi-modal pipeline is proposed that fuses STFT-based two-axis vibration features with a minimal 6-D temperature trend/statistical descriptor via a late-fusion head, together with per-frequency (across-time) normalization to stabilize spectrogram brightness.
     \item A leakage-aware, TTF-aligned evaluation recipe with present-class scoring and file-wise mean-logit aggregation is employed to reflect deployment and avoid window-overlap leakage; the protocol makes performance interpretation robust when some classes are absent late in life.
     \item Targeted ablations (vibration-only vs. multi-modal, stratified initialization vs. scratch, temporal slice selection) are provided to explain when temperature adds value and how initialization affects temporal generalization.
-    \item Empirically, strong performance is achieved: Macro-F1 $\approx$ 0.7762 on a 3-class stratified split; under leakage-aware late-life temporal testing with mean-logit aggregation, Early (70--90\%) Accuracy $=1.0000$ (Degrading only) and Late (90--100\%) Fault F1 $\approx$ 0.556, with clear gains over a vibration-only baseline in late-life Fault recognition.
+    \item Empirically, strong performance is achieved: Macro-F1 $\approx$ 0.7762 on a 3-class stratified split; under leakage-aware temporal testing (present classes), \textbf{Early (70--90\%): Accuracy $=0.8846$, Degrading F1 $=0.9388$} and \textbf{Late (90--100.1\%): Accuracy $=0.9231$, Fault F1 $=0.9600$}. Over the full range $[0,100.1]\%$ with majority vote, Accuracy $=0.8915$ and Macro-F1 $=0.8739$.
 \end{itemize}
 
 % Related Works content has been condensed into the Introduction to reduce redundancy.
 
-\section{Related Work (Brief)}
-Time--frequency CNNs are prevalent for bearing fault diagnosis and provide strong baselines under controlled settings \cite{zhao2019deep,lei2020roadmap,ince2016tie,wen2018neurocomputing}. Transfer learning further enhances robustness and data efficiency across domains \cite{shao2019tii_transfer}. Beyond single-modality vibration, multimodal fusion leverages complementary cues (e.g., temperature) to improve robustness, especially near degradation onset \cite{baltrusaitis2019multimodal,huo2022tim_multisensor,gao2024inffus_multisource,xiao2025inffus_multilevel}. Equally important is evaluation realism: random/window-level splits can induce temporal leakage and optimistic bias, motivating contiguous, TTF-aligned protocols or walk-forward schemes for deployment-oriented assessment \cite{kaufman2012leakage,bergmeir2012timeseriescv}. Our work follows this line by pairing a lightweight time--frequency CNN with a compact temperature descriptor and emphasizing leakage-aware temporal evaluation.
+\section{Related Works}
+Time--frequency CNNs have been studied extensively for bearing fault diagnosis and provide strong baselines under controlled settings \cite{zhao2019deep,lei2020roadmap,ince2016tie,wen2018neurocomputing}. Transfer learning further improves robustness and data efficiency across domains \cite{shao2019tii_transfer}. Beyond single-modality vibration, multimodal methods combine complementary signals (e.g., temperature) to enhance robustness near degradation onset \cite{baltrusaitis2019multimodal,huo2022tim_multisensor,gao2024inffus_multisource,xiao2025inffus_multilevel}. However, many prior studies rely on random/window-level splits that can introduce temporal leakage and overly optimistic estimates. In contrast, this work adopts a \emph{leakage-aware, TTF-aligned} evaluation that respects chronology and reports present-class metrics when some classes are absent, providing a more deployment-oriented assessment.
 
 \section{Methodology}
 \label{sec:method}
 
 \subsection{Overview}
-We adopt a lightweight multi-modal pipeline. Each 1.0-s window yields a 2-channel log-spectrogram from two-axis vibration and a compact 6-D descriptor from two-channel temperature. A small 2D CNN encodes vibration, a linear layer embeds temperature, and a late-fusion classifier predicts the stage. Training is two-phase: file-wise stratified learning followed by leakage-aware temporal fine-tuning aligned with the TTF axis.
-
-\subsection{Block Diagram}
-Figure~\ref{fig:block} illustrates the end-to-end data flow from raw inputs to file-wise decisions and where fusion occurs.
+A lightweight multi-modal pipeline is presented. Each 1.0-s window yields a 2-channel log-spectrogram from two-axis vibration and a compact 6-D descriptor from two-channel temperature. A small 2D CNN encodes vibration, a linear layer embeds temperature, and a late-fusion classifier predicts the stage. Training is two-phase: file-wise stratified learning followed by leakage-aware temporal fine-tuning aligned with the TTF axis. Figure~\ref{fig:block} summarizes the end-to-end flow and where fusion and file-wise aggregation occur.
 
 \begin{figure}[t]
   \centering
@@ -115,40 +112,32 @@ Figure~\ref{fig:block} illustrates the end-to-end data flow from raw inputs to f
 \subsection{Data processing}
 Vibration (2 axes) and temperature (2 channels) are sampled synchronously and sliced by identical 1.0-s windows with 50\% overlap, avoiding extra timestamp alignment. (If rates differ in deployment, a simple resampling/alignment step is required.)
 
-\subsection{Preprocessing and spectrograms}
-Each window is sanitized (NaN/Inf \,$\to$\,0) and z-scored per channel. STFT log-magnitude spectrograms are computed with $n\_{fft}=2048$, $hop\_length=512$ (Hann), then resized to $160\times160$.
+\subsection{Feature Engineering}
+Each window is sanitized (NaN/Inf \,$\to$\,0) and z-scored per channel. STFT log-magnitude spectrograms are computed with $n\_{fft}=2048$, $hop\_length=512$ (Hann), then resized to $160\times160$. A per-frequency (across-time) normalization stabilizes spectral brightness; the two vibration axes are then stacked as channels to form a $(2\times H\times W)$ input. In parallel, a compact 6-D temperature descriptor (mean, std, slope for each of two channels) is computed per window.
 
-\subsection{Per-frequency normalization and stacking}
-To stabilize spectrogram "brightness" across frames, we apply per-frequency (across-time) normalization, then stack the two vibration axes as channels to form a $(2\times H\times W)$ input.
+% (Merged into Signal Processing and Features)
 
-\subsection{Temperature descriptor (6-D) per window}
-For temperature, we compute a compact 6-D descriptor (mean, std, slope for each channel) per window; non-finite values default to zero.
+% (Merged temperature descriptor into Signal Processing and Features)
 
-\vspace{2pt}
-
-% CNN encoder details (standard ResNet-style) omitted for brevity.
-
-\subsection{Late fusion classifier}
-We embed temperature with a linear layer and fuse by concatenation with the vibration embedding; a linear classifier produces logits. We avoid formula-level detail as the design is standard.
+\subsection{Classifier and Fusion}
+Standard late fusion: concatenate the vibration embedding with the temperature embedding, then apply a linear head to produce logits.
 
 \subsection{File-wise inference}
 \label{sec:filewise}
-We collect per-window \emph{pre-softmax} logits for each file, average them, and predict by $\arg\max$ over the mean logits. This simple rule is stable and aligns with set-aggregation principles \cite{zaheer2017deepsets}.
-% Implementation provenance omitted; see Acknowledgements for attribution.
+For each file, average \emph{pre-softmax} logits across windows (mean-logit) and take $\arg\max$ over the mean.
 \subsection{Two-phase training}
-We first train under a file-wise stratified split, then fine-tune using a leakage-aware temporal split aligned with TTF: train [0,60]\%, val [60,70]\%, test [70,100.1]\%. Hyperparameters and settings for both phases are summarized in Table~\ref{tab:settings}.
+Training first proceeds under a file-wise stratified split, then fine-tuning uses a leakage-aware temporal split aligned with TTF: train [0,60]\%, val [60,70]\%, test [70,100.1]\%. Hyperparameters and settings for both phases are summarized in Table~\ref{tab:settings}.
 % (Computational notes merged into Data processing.)
 
 
-\section{Dataset and Problem Definition}
-\label{sec:data_problem}
+\section{Experimental Setup}
+\label{sec:exp_setup}
 
-\subsection{Run-to-failure dataset}
-The run-to-failure bearing dataset provided by Jung et al.~\cite{jung2024dib_rtf,jung2024mendeley_rtf} is used. 
+\subsection{Experimental Configuration}
+The run-to-failure bearing dataset provided by Jung et al.~\cite{jung2024dib_rtf,jung2024mendeley_rtf} is used in this study. 
 The dataset contains \textbf{one run} (\texttt{RUNS=1}) consisting of \textbf{129 files} (\texttt{FILES=129}). 
 Two-axis vibration signals are sampled at \textbf{25.6 kHz}.
 
-\subsection{Segmentation and feature construction}
 Vibration is segmented into fixed-length windows of \textbf{1.0 s} (25{,}600 samples) with \textbf{50\% overlap} (hop = 0.5 s = 12{,}800 samples). 
 Each vibration window is converted to a time--frequency representation using STFT with $n\_fft=2048$ and $hop\_length=512$. 
 The resulting spectrogram is resized to \textbf{$160\times160$} for both the development and temporal fine-tuning settings in this work.
@@ -156,9 +145,8 @@ The resulting spectrogram is resized to \textbf{$160\times160$} for both the dev
 In addition, temperature features are extracted from \textbf{two channels}. 
 For each window, \textbf{six} temperature descriptors are computed: mean, standard deviation, and slope for each channel (total 6-D).
 
-\subsection{Three-stage health definition by normalized lifetime}
 Let $\mathrm{TTF\%} \in [0,1]$ denote the normalized time-to-failure percentage within the run. 
-We use three stages along normalized lifetime with empirically chosen thresholds to delineate early/mid/late life and define temporal splits (Table~\ref{tab:stages}).
+Three stages are defined along normalized lifetime; see Table~\ref{tab:stages} for the threshold ranges that delineate early/mid/late life and guide temporal splits.
 \begin{table}[t]
   \centering
   \caption{Health stages by TTF\% (normalized lifetime).}
@@ -173,37 +161,32 @@ We use three stages along normalized lifetime with empirically chosen thresholds
     \bottomrule
   \end{tabular}
 \end{table}
-\section{Setup}
-\label{sec:setup}
+% (Setup merged into Experimental Setup)
+
+All experiments run on a single NVIDIA RTX 2060 (6\,GB) GPU with PyTorch~2.x and CUDA~12.x. Unless stated otherwise, the random seed is fixed to 42 for both data splitting and training. Final results use the configuration at \verb|configs/logs_stft_full_temporal_gating.yaml| and the corresponding checkpoint produced in \verb|runs/logs_stft_temporal_gating_final|. Mixed precision (AMP) is enabled; for temporal evaluation, up to 50 validation windows per file are used (\verb|val_max_windows=50|).
 
 \subsection{Development setting: stratified split}
-We adopt a file-wise stratified split for development (0.6/0.2/0.2). Training hyperparameters and settings are summarized in Table~\ref{tab:settings}.
+A file-wise stratified split is adopted for development (0.6/0.2/0.2). Training hyperparameters and settings are summarized in Table~\ref{tab:settings}.
 
 \begin{table}[htbp]
-\caption{Training and evaluation settings for stratified development and temporal fine-tuning.}
+\caption{Training settings (dev vs. temporal fine-tuning).}
 \label{tab:settings}
 \centering
 \begin{tabular}{lcc}
 \toprule
  & Stratified (dev) & Temporal (FT) \\
 \midrule
-Split & 0.6/0.2/0.2 & [0,60]/[60,70]/[70,100.1]\% \\
-Init & scratch & best stratified (\texttt{init\_from}) \\
 Optimizer & AdamW & AdamW \\
-LR & $2\times10^{-4}$ & $2\times10^{-4}$ \\
+LR & $2\times10^{-4}$ & $3\times10^{-5}$ \\
 Weight decay & $10^{-3}$ & $10^{-2}$ \\
 Epochs & 80 & 60 \\
-Sampling & balanced & balanced \\
 Schedule & -- & cosine (OneCycle off) \\
-AMP & on & on \\
-Early stop & 20 & 20 \\
-val\_max\_windows & -- & 0 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Deployment-oriented setting: leakage-aware temporal split}
-We adopt a contiguous, TTF-aligned temporal split to avoid overlapped-window leakage and better match deployment: train [0,60]\%, val [60,70]\%, test [70,100.1]\%. The split is illustrated in Figure~\ref{fig:protocol_compare}; remaining settings follow Table~\ref{tab:settings}.
+A contiguous, TTF-aligned temporal split is adopted to avoid overlapped-window leakage and better match deployment: train [0,60]\%, val [60,70]\%, test [70,100.1]\%. The split is illustrated in Figure~\ref{fig:protocol_compare}; remaining settings follow Table~\ref{tab:settings}.
 
 \begin{figure}[t]
   \centering
@@ -261,13 +244,13 @@ In the stratified development setting, the best configuration (\texttt{auto\_r22
 Per-class F1 scores are approximately: Healthy $\approx$ 0.69, Degrading $\approx$ 0.64, and Fault = 1.00. 
 This indicates that Fault signatures are highly separable, while the Degrading stage remains the most challenging due to its transitional nature.
 
-We summarize these stratified results in text for brevity.
+These stratified results are summarized in text for brevity.
 
 \subsection{Temporal evaluation (deployment-oriented)}
 Under the temporal leakage-aware split, the test slice [70,100.1]\% corresponds to late-life behavior where \emph{Healthy samples do not appear}. 
 Therefore, metrics are reported over the \emph{present classes} (Degrading and Fault). 
-Using mean-logit aggregation, the model attains \textbf{Early (70--90\%): Accuracy = 1.0000 (Degrading only)} and \textbf{Late (90--100\%): Accuracy = 0.3846; Fault F1 = 0.5556}. 
-These results suggest that the learned representation transfers from earlier life to late-life conditions, while late Fault recall remains the primary bottleneck.
+Using mean-logit aggregation on the best temporal configuration, the model attains \textbf{Early (70--90\%): Accuracy = 0.8846 (Degrading only; F1 = 0.9388)} and \textbf{Late (90--100\%): Accuracy = 0.9231; Fault F1 = 0.9600}. 
+These results suggest that the learned representation transfers from earlier life to late-life conditions; the Healthy--Degrading boundary around 60--70\% TTF remains the main challenge when broader coverage is included.
 
 
 
@@ -276,37 +259,39 @@ Figure~\ref{fig:temporal_pair} summarizes temporal performance on the late-life 
   \centering
   \includegraphics[width=0.48\linewidth]{figures/temporal/confusion_matrix.png}
   \hfill
-  \includegraphics[width=0.48\linewidth]{figures/temporal/f1_per_class.png}
-  \caption{Leakage-aware temporal evaluation on the late-life slice [70,100.1]\% TTF (only Degrading and Fault present). Left: confusion matrix. Right: per-class F1 over present classes.}
+  \includegraphics[width=0.48\linewidth]{figures/temporal/f1_present.png}
+  \caption{Leakage-aware temporal evaluation on the late-life slice [70,100.1]\% TTF. Left: confusion matrix. Right: per-class F1 over present classes (Healthy absent).}
   \label{fig:temporal_pair}
 \end{figure}
 
 \subsection{Full-range temporal (0--100.1\%)}
-We assess $[0,100.1]\%$ TTF using the stronger aggregation: majority vote (Accuracy $=0.8295$, Macro-F1 $=0.6999$). For brevity, we omit plots and note that mean aggregation yields Accuracy $=0.4806$, Macro-F1 $=0.4907$.
+The final model is further evaluated over the entire lifecycle $[0,100.1]\%$ TTF. With \textbf{majority vote} aggregation, the model attains \textbf{Accuracy $=0.8915$} and \textbf{Macro-F1 $=0.8739$}. Using \textbf{mean-logit} aggregation, Accuracy is $=0.7752$ and Macro-F1 is $=0.8006$. See Figure~\ref{fig:fullrange_pair} for a visual summary.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.48\linewidth]{figures/fullrange/confusion_matrix_full.png}
+  \hfill
+  \includegraphics[width=0.48\linewidth]{figures/fullrange/f1_present_full.png}
+  \caption{Full-range temporal evaluation $[0,100.1]\%$ TTF (file-wise aggregation). Left: confusion matrix. Right: per-class F1.}
+  \label{fig:fullrange_pair}
+\end{figure}
 
 \subsection{Failure case analysis with broader temporal coverage}
-When expanding evaluation to a broader range that includes more ambiguous mid-life samples, the metrics can shift notably. For a representative configuration (broad late slice $[70,100.1]$\%, present-labels), we observe Accuracy $=0.7949$ and Macro-F1 $=0.4790$, where Degrading is frequently confused with Healthy and Healthy may have zero support depending on the slice. This highlights sensitivity near the Healthy--Degrading boundary and motivates stronger supervision and longer temporal context.
+When evaluation expands to cover a broader range that includes more ambiguous mid-life samples, metrics can shift notably: Degrading is more frequently confused with Healthy and, depending on the slice, Healthy may have zero support. This highlights sensitivity near the Healthy--Degrading boundary and motivates stronger supervision and longer temporal context.
 
 \FloatBarrier
+\section{Ablation and Discussion}
+\label{sec:discussion}
 \subsection{Ablation Studies}
 \label{sec:ablation}
 
-\paragraph{Effect of stratified initialization.}
-Initializing temporal fine-tuning from the best stratified checkpoint yields markedly stronger late-life performance than training from scratch on the same temporal coverage; details omitted for brevity.
-
-\paragraph{Temporal test slice.}
-We also vary the temporal test slice: a broader late slice $[70,100.1]\%$ includes early Degrading and yields lower Degrading F1, while a very-late slice $[90,100.1]\%$ may contain only Fault; we report key numbers in Table~\ref{tab:abl_summary}.
-
-\paragraph{Multi-modal fusion (vibration + temperature) vs. vibration-only.}
-To assess the contribution of temperature features, the multi-modal model is compared against a vibration-only variant where the temperature branch is disabled (same training protocols; stratified pre-training followed by temporal fine-tuning). File-wise metrics on the late-life temporal slice (present-labels) are reported; see the consolidated summary in Table~\ref{tab:abl_summary}.
-
-% Detailed per-slice tables are consolidated below; see Table~\ref{tab:abl_summary}.
-
-\noindent (Confusion plots omitted; see summary table below.)
-
-
-\paragraph{Broad late slice $[70,100.1]\%$: multi-modal vs. vibration-only.}
-On the broader late slice, the vibration-only model emphasizes Degrading (F1 $\approx$ 0.80) but fails to recognize Fault (F1 $\approx$ 0.00), while the multi-modal model captures Fault well (F1 $\approx$ 0.92) but struggles near the early Degrading boundary (F1 $\approx$ 0.07); see Table~\ref{tab:abl_summary}.
+Table~\ref{tab:abl_summary} consolidates ablations across temporal slices. Key takeaways:
+\begin{itemize}
+  \item \textbf{Modality effect.} On late-life slices, the vibration-only model fails to detect Fault (F1 $\approx$ 0.00), while the multi-modal model achieves strong Fault recognition (e.g., 0.9600 at $[90,100.1]\%$, 0.8889 at $[70,100.1]\%$).
+  \item \textbf{Initialization.} Initializing temporal fine-tuning from the best stratified checkpoint outperforms training from scratch (same coverage).
+  \item \textbf{Slice sensitivity.} Broader coverage $[70,100.1]\%$ reduces Degrading F1 due to the Healthy--Degrading boundary; very-late $[90,100.1]\%$ can become single-class (Fault).
+  \item \textbf{Classical baseline.} An 8D vib SVM is competitive on $[70,90]\%$ (Degrading-only) but collapses on very-late slices, underscoring the need for the leakage-aware protocol and multi-modal cues.
+  \item \textbf{Variants.} Removing class-weights or switching to higher resolution (4096/1024, 224$\times$224) underperforms the final configuration.
+\end{itemize}
 
 % Broad-slice numbers are included in the consolidated summary; see Table~\ref{tab:abl_summary}.
 
@@ -318,33 +303,46 @@ On the broader late slice, the vibration-only model emphasizes Degrading (F1 $\a
     \toprule
     Slice & Variant & Accuracy & Macro-F1 (present) & F1 Degrading & F1 Fault \\
     \midrule
+    $[70,90]\%$ & Multi-modal (vib+temp) & 0.8846 &  & 0.9388 &  \\
+    $[70,90]\%$ & Classical vib (SVM, 8D) & 1.0000 &  & 1.0000 &  \\
     $[85,100.1]\%$ & Vib-only &  & 0.2593 & 0.5185 & 0.0000 \\
     $[85,100.1]\%$ & Multi-modal (vib+temp) &  & 0.9467 & 0.9333 & 0.9600 \\
     \midrule
     $[70,100.1]\%$ & Vib-only &  & 0.8000 & 0.8000 & 0.0000 \\
-    $[70,100.1]\%$ & Multi-modal (vib+temp) &  & 0.4986 & 0.0741 & 0.9231 \\
+    $[70,100.1]\%$ & Classical vib (SVM, 8D) & 0.6667 & 0.4000 & 0.8000 & 0.0000 \\
+    $[70,100.1]\%$ & Multi-modal (vib+temp) & 0.8974 & 0.9045 & 0.9200 & 0.8889 \\
     \midrule
-    $[90,100.1]\%$ & Multi-modal (r49, mean) & 0.3846 &  &  & 0.5556 \\
+    $[90,100.1]\%$ & Multi-modal (vib+temp) & 0.9231 &  &  & 0.9600 \\
+    $[90,100.1]\%$ & Classical vib (SVM, 8D) & 0.0000 &  &  & 0.0000 \\
     $[90,100.1]\%$ & Vib-only & 0.0000 &  &  & 0.0000 \\
     $[90,100.1]\%$ & No class-weights & 0.3077 &  &  & 0.4706 \\
     $[90,100.1]\%$ & High-res (4096/1024, 224$\times$224) & 0.8462 &  &  & 0.9167 \\
     \bottomrule
   \end{tabular}
 \end{table}
+
+\paragraph{Why temperature helps late life.}
+Temperature aggregates effects of load and friction; in late life (90--100.1\% TTF) these trends become distinctive even when vibration patterns remain non-stationary. The multi-modal model leverages complementary cues, improving Fault recognition (Fault F1 $=0.9600$) without sacrificing Degrading performance on earlier slices.
+
+\paragraph{Why Healthy--Degrading is hard.}
+The transition around 60--70\% TTF is gradual and class support is limited, yielding overlapping distributions. This manifests as lower Degrading F1 on broad slices that include earlier life. Sequence-aware context or stronger supervision near the boundary may further mitigate this issue.
+
+\paragraph{Deployment considerations.}
+In practical monitoring, alarm thresholds typically target very-late life (e.g., $>90\%$ TTF). The evaluation isolates early/late sub-slices and reports present-class metrics to reflect that some classes are absent, which stabilizes interpretation and aligns with decision points used in operations.
 \FloatBarrier
 
 
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
 
-This paper investigated three-stage bearing health classification (Healthy, Degrading, Fault) in a run-to-failure setting using a lightweight multi-modal model with STFT-based vibration features and compact temperature descriptors. We emphasized a \textbf{leakage-aware, TTF-aligned} protocol and a two-phase workflow (stratified training $\rightarrow$ temporal fine-tuning) to approximate deployment conditions. Results show strong late-life discrimination under temporal evaluation; the Healthy--Degrading boundary remains the hardest when broader mid-life coverage is included. Thresholds (60\%/90\%) were chosen empirically to delineate stages.
+This paper investigated three-stage bearing health classification (Healthy, Degrading, Fault) in a run-to-failure setting using a lightweight multi-modal model with STFT-based vibration features and compact temperature descriptors. A \textbf{leakage-aware, TTF-aligned} protocol and a two-phase workflow (stratified training $\rightarrow$ temporal fine-tuning) are emphasized to approximate deployment conditions. Results show strong late-life discrimination under temporal evaluation; the Healthy--Degrading boundary remains the hardest when broader mid-life coverage is included. On a very-late slice $[90,100.1]\%$, the model attains Fault F1 $=0.9600$; on the full range $[0,100.1]\%$ with file-wise \emph{vote} aggregation, Macro-F1 $=0.8739$. Stage thresholds are defined in Table~\ref{tab:stages} and were chosen empirically.
 
-Limitations include single-run evaluation, fixed stage thresholds, potential residual temporal correlation near split boundaries, class-absence on certain slices (necessitating present-class metrics), and an assumption of synchronous sampling. 
+Limitations: single-run evaluation, empirical stage thresholds, possible residual temporal correlation near split boundaries, class absence on some slices (hence present-class metrics), and an assumption of synchronous sampling.
 
-\textbf{Future work} will fold these into: (i) multi-run/bearing evaluations and external datasets (e.g., CWRU, Paderborn) with bearing-wise splits to assess domain shift; (ii) sensitivity analysis of stage thresholds and refined labeling using degradation indicators or expert input; (iii) sequence-aware modeling and longer temperature context to improve early/mid-life discrimination; (iv) safeguards against temporal leakage (temporal gaps, non-overlapping eval windows); and (v) calibration/uncertainty estimation for reliable early-warning.
+\textbf{Future work} focuses on two directions: (i) cross-bearing/multi-run evaluations with additional external datasets to assess generalization; (ii) improving the Healthy--Degrading boundary via threshold-sensitivity analysis and stronger temporal/contextual modeling.
 
 \bmhead{Acknowledgements}
-We acknowledge Nguyen Tat Thanh University, Ho Chi Minh City, Vietnam for supporting this study. We also thank the authors of the open-source repository \cite{mdzalfirdausi_paderborn_repo}, whose code inspired parts of our implementation.
+The authors acknowledge Nguyen Tat Thanh University, Ho Chi Minh City, Vietnam for supporting this study. The authors also thank the contributors of the open-source repository \cite{mdzalfirdausi_paderborn_repo}, whose code inspired parts of the implementation.
 
 \section*{Declarations}
 

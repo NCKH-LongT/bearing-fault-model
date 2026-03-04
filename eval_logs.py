@@ -195,6 +195,28 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
                 plt.show()
             else:
                 plt.close(fig_f1)
+
+            # Additionally, plot present-classes-only F1 (omit absent classes)
+            try:
+                labels_present = sorted(set(ys) | set(ps))
+                if labels_present:
+                    names_present = [cls_names[i] for i in labels_present]
+                    f1_present = f1_score(ys, ps, average=None, labels=labels_present, zero_division=0)
+                    fig_f1p = plt.figure(figsize=(4.5, 3))
+                    axp = fig_f1p.add_subplot(111)
+                    axp.bar(range(len(names_present)), f1_present)
+                    axp.set_xticks(range(len(names_present)))
+                    axp.set_xticklabels(names_present, rotation=45, ha="right")
+                    axp.set_ylim(0, 1)
+                    axp.set_ylabel("F1-score (present)")
+                    fig_f1p.tight_layout()
+                    fig_f1p.savefig(os.path.join(out_dir, "f1_present.png"), dpi=200)
+                    if show:
+                        plt.show()
+                    else:
+                        plt.close(fig_f1p)
+            except Exception:
+                pass
         except Exception:
             pass
 
