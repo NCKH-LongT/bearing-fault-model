@@ -1,6 +1,7 @@
 Tiêu đề: Three-Stage Bearing Health Classification (Rung STFT + Nhiệt, TTF‑aligned)
 Tác giả: Long Truong, Phu Le Nguyen
-Thời lượng: 12–15 phút
+
+Ghi chú: Hướng dẫn chỉnh sửa V11→V12 xem `docs/revision_v12_guide_vi.md`.
 
 ---
 

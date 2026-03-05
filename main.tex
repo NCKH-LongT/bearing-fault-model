@@ -161,6 +161,7 @@ Three stages are defined along normalized lifetime; see Table~\ref{tab:stages} f
     \bottomrule
   \end{tabular}
 \end{table}
+\noindent\textit{Note:} Evaluation slices sometimes use $100.1\%$ as a technical padding to ensure full coverage of the last file in a run.
 % (Setup merged into Experimental Setup)
 
 All experiments run on a single NVIDIA RTX 2060 (6\,GB) GPU with PyTorch~2.x and CUDA~12.x. Unless stated otherwise, the random seed is fixed to 42 for both data splitting and training. Final results use the configuration at \verb|configs/logs_stft_full_temporal_gating.yaml| and the corresponding checkpoint produced in \verb|runs/logs_stft_temporal_gating_final|. Mixed precision (AMP) is enabled; for temporal evaluation, up to 50 validation windows per file are used (\verb|val_max_windows=50|).
