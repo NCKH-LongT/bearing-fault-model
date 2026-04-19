@@ -1,0 +1,5 @@
+"file","run_id","ttf_percent","fault_type"
+# Example rows (remove comment line before use):
+# "run2/file_0001.csv","run2","0.0","healthy"
+# "run2/file_0123.csv","run2","87.5","degrading"
+# "run3/file_0256.csv","run3","96.2","fault"

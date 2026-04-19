@@ -1,4 +1,4 @@
-﻿\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}% Springer Nature LaTeX template
+\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}% Springer Nature LaTeX template
 
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
@@ -30,7 +30,7 @@
 \author*[2]{\fnm{Phu~Le} \sur{Nguyen}}\email{lpnguyen@ntt.edu.vn}
 \equalcont{These authors contributed equally to this work.}
 
-\affil[1]{\orgname{FPT University}, \orgaddress{\city{Ho Chi Minh City}, \country{Vietnam}}}
+\affil[1]{\orgname{Faculty of Engineering and Technology, FPT University}, \orgaddress{\city{Ho Chi Minh City}, \country{Vietnam}}}
 \affil[2]{\orgname{Faculty of Engineering and Technology, Nguyen Tat Thanh University}, \orgaddress{\city{Ho Chi Minh City}, \country{Vietnam}}}
 
 \abstract{In this work, the three-stage bearing health classification (Healthy, Degrading, Fault) under a run-to-failure setting is addressed using vibration short-time Fourier transform (STFT) representations and compact temperature trend descriptors. A lightweight multi-modal pipeline is presented in which per-frequency (across-time) normalization stabilizes spectrogram brightness and a late head fuses a minimal 6-D temperature descriptor with vibration features. Evaluation is conducted with a leakage-aware, time-to-failure\,\mbox{(TTF)}-aligned protocol and a two-phase workflow (stratified pre-training followed by temporal fine-tuning) to mitigate temporal leakage and reflect deployment. On a stratified development split, Macro-F1 is $\approx$ 0.7762. Under leakage-aware temporal testing, strong late-life discrimination is achieved (Fault F1 $=0.9600$ on 90--100.1\% TTF), and full-lifecycle performance reaches Accuracy $=0.8915$ and Macro-F1 $=0.8739$ with majority vote, demonstrating clear gains over a vibration-only baseline.}
@@ -53,11 +53,11 @@ To bridge development and deployment, a two-phase workflow is followed: file-wis
 
 % Related Works content has been condensed into the Introduction to reduce redundancy.
 
-\section{Related Works}
+\section{Background}
 Time--frequency CNNs have been studied extensively for bearing fault diagnosis and provide strong baselines under controlled settings \cite{zhao2019deep,lei2020roadmap,ince2016tie,wen2018neurocomputing}. Transfer learning further improves robustness and data efficiency across domains \cite{shao2019tii_transfer}. Beyond single-modality vibration, multimodal methods combine complementary signals (e.g., temperature) to enhance robustness near degradation onset \cite{baltrusaitis2019multimodal,huo2022tim_multisensor,gao2024inffus_multisource,xiao2025inffus_multilevel}. However, many prior studies rely on random/window-level splits that can introduce temporal leakage and overly optimistic estimates. In contrast, this work adopts a \emph{leakage-aware, TTF-aligned} evaluation that respects chronology and reports present-class metrics when some classes are absent, providing a more deployment-oriented assessment.
 
-\section{Methodology}
-\label{sec:method}
+\section{Model Overview}
+\label{sec:overview}
 
 \subsection{Overview}
 A lightweight multi-modal pipeline is presented. Each 1.0-s window yields a 2-channel log-spectrogram from two-axis vibration and a compact 6-D descriptor from two-channel temperature. A small 2D CNN encodes vibration, a linear layer embeds temperature, and a late-fusion classifier predicts the stage. Training is two-phase: file-wise stratified learning followed by leakage-aware temporal fine-tuning aligned with the TTF axis. Figure~\ref{fig:block} summarizes the end-to-end flow and where fusion and file-wise aggregation occur.
@@ -109,24 +109,39 @@ A lightweight multi-modal pipeline is presented. Each 1.0-s window yields a 2-ch
   \label{fig:block}
 \end{figure}
 
-\subsection{Data processing}
+\subsection{Signal Processing and Feature Extraction}
 Vibration (2 axes) and temperature (2 channels) are sampled synchronously and sliced by identical 1.0-s windows with 50\% overlap, avoiding extra timestamp alignment. (If rates differ in deployment, a simple resampling/alignment step is required.)
 
-\subsection{Feature Engineering}
+% (merged into Signal Processing and Feature Extraction)
 Each window is sanitized (NaN/Inf \,$\to$\,0) and z-scored per channel. STFT log-magnitude spectrograms are computed with $n\_{fft}=2048$, $hop\_length=512$ (Hann), then resized to $160\times160$. A per-frequency (across-time) normalization stabilizes spectral brightness; the two vibration axes are then stacked as channels to form a $(2\times H\times W)$ input. In parallel, a compact 6-D temperature descriptor (mean, std, slope for each of two channels) is computed per window.
 
 % (Merged into Signal Processing and Features)
 
 % (Merged temperature descriptor into Signal Processing and Features)
 
-\subsection{Classifier and Fusion}
+\subsection{Model and Fusion Head}
 Standard late fusion: concatenate the vibration embedding with the temperature embedding, then apply a linear head to produce logits.
 
-\subsection{File-wise inference}
-\label{sec:filewise}
+\subsection{Inference and Metrics}
+\label{sec:filewise}\label{sec:present}
 For each file, average \emph{pre-softmax} logits across windows (mean-logit) and take $\arg\max$ over the mean.
-\subsection{Two-phase training}
-Training first proceeds under a file-wise stratified split, then fine-tuning uses a leakage-aware temporal split aligned with TTF: train [0,60]\%, val [60,70]\%, test [70,100.1]\%. Hyperparameters and settings for both phases are summarized in Table~\ref{tab:settings}.
+Let $\mathcal{F}$ be the set of files in an evaluation slice and $\mathcal{C}$ the set of stage labels. For file $f\in\mathcal{F}$ with window set $\mathcal{W}_f$, the model produces per-window logits $\mathbf{z}_w\in\mathbb{R}^{|\mathcal{C}|}$. We compute mean-logits and a file-level prediction as
+\begin{equation*}
+\bar{\mathbf{z}}_f = \frac{1}{|\mathcal{W}_f|}\sum_{w\in\mathcal{W}_f} \mathbf{z}_w,\quad \hat{y}_f = \arg\max_{c\in\mathcal{C}} (\bar{\mathbf{z}}_f)_c.
+\end{equation*}
+Define the \emph{present-class} set $\mathcal{P} = \{ c\in\mathcal{C} : \text{support}(c) = |\{ f\in\mathcal{F} : y_f = c \}| > 0 \}$. We compute per-class precision/recall/F1 only for $c\in\mathcal{P}$:
+\begin{align*}
+\mathrm{Prec}_c &= \frac{\mathrm{TP}_c}{\mathrm{TP}_c + \mathrm{FP}_c},\quad
+\mathrm{Rec}_c = \frac{\mathrm{TP}_c}{\mathrm{TP}_c + \mathrm{FN}_c},\\
+\mathrm{F1}_c &= \frac{2\,\mathrm{Prec}_c\,\mathrm{Rec}_c}{\mathrm{Prec}_c + \mathrm{Rec}_c} \quad (\text{defined when denominator} > 0).
+\end{align*}
+Macro-F1 over present classes is then
+\begin{equation*}
+\mathrm{Macro\text{-}F1}_{\text{present}} = \frac{1}{|\mathcal{P}|}\sum_{c\in\mathcal{P}} \mathrm{F1}_c.
+\end{equation*}
+When an evaluation slice becomes single-class (e.g., very late life), we report the per-class F1 for the present class and omit Macro-F1 (marked as \textemdash{} in tables).
+\subsection{Training and Evaluation Protocol}
+Training first proceeds under a file-wise stratified split, then fine-tuning uses a leakage-aware temporal split aligned with TTF: train [0,60]\%, val [60,70]\%, test [70,100.1]\%. Hyperparameters and settings for both phases are summarized in Table~\ref{tab:settings}; full experimental details are provided in Section~\ref{sec:exp_setup}.
 % (Computational notes merged into Data processing.)
 
 
@@ -164,7 +179,7 @@ Three stages are defined along normalized lifetime; see Table~\ref{tab:stages} f
 \noindent\textit{Note:} Evaluation slices sometimes use $100.1\%$ as a technical padding to ensure full coverage of the last file in a run.
 % (Setup merged into Experimental Setup)
 
-All experiments run on a single NVIDIA RTX 2060 (6\,GB) GPU with PyTorch~2.x and CUDA~12.x. Unless stated otherwise, the random seed is fixed to 42 for both data splitting and training. Final results use the configuration at \verb|configs/logs_stft_full_temporal_gating.yaml| and the corresponding checkpoint produced in \verb|runs/logs_stft_temporal_gating_final|. Mixed precision (AMP) is enabled; for temporal evaluation, up to 50 validation windows per file are used (\verb|val_max_windows=50|).
+All experiments run on a single NVIDIA RTX 2060 (6\,GB) GPU with PyTorch~2.x and CUDA~12.x. Unless stated otherwise, the random seed is fixed to 42 for both data splitting and training. Final results use the configuration at \nolinkurl{configs/logs_stft_full_temporal_gating.yaml} and the corresponding checkpoint produced in \nolinkurl{runs/logs_stft_temporal_gating_final}. Mixed precision (AMP) is enabled; for temporal evaluation, up to 50 validation windows per file are used (\verb|val_max_windows=50|).
 
 \subsection{Development setting: stratified split}
 A file-wise stratified split is adopted for development (0.6/0.2/0.2). Training hyperparameters and settings are summarized in Table~\ref{tab:settings}.
@@ -194,16 +209,16 @@ A contiguous, TTF-aligned temporal split is adopted to avoid overlapped-window l
   \begin{minipage}[b]{0.47\textwidth}
     \centering
     \begin{tikzpicture}[x=0.075\linewidth, y=6mm]
-      % Trục TTF
+      % Time-to-failure (TTF) axis
       \draw[->] (0,0) -- (10.3,0) node[right]{TTF\%};
       \node at (0,-0.6){\footnotesize 0}; \node at (10,-0.6){\footnotesize 100};
       
-      % Các khối cửa sổ xen kẽ (Train/Test) minh họa rủi ro rò rỉ
+      % Alternating window blocks (Train/Test) illustrating leakage risk
       \foreach \x/\c in {0.5/blue!60,1/blue!60,1.5/red!60,2/blue!60,2.5/red!60,3/blue!60,3.5/red!60,4/blue!60,4.5/red!60,5/blue!60,5.5/red!60,6/blue!60,6.5/red!60,7/blue!60,7.5/red!60,8/blue!60,8.5/red!60,9/blue!60,9.5/red!60} {
         \draw[fill=\c,draw=\c] (\x,-0.4) rectangle ++(0.4,0.8);
       }
       
-      % Chú thích (Legend) - Phần này làm hình (a) cao hơn hình (b)
+      % Legend (kept minimal to balance subfig heights)
       \draw[fill=white, draw=white] (0.5,1.38) rectangle (3.4,1.62);
       \node[draw, fill=blue!60, minimum width=6mm, minimum height=3mm] (l1) at (0.8,1.5) {};
       \node[anchor=west] at (1.2,1.5) {\footnotesize Train};
@@ -215,17 +230,15 @@ A contiguous, TTF-aligned temporal split is adopted to avoid overlapped-window l
   \begin{minipage}[b]{0.47\textwidth}
     \centering
     \begin{tikzpicture}[x=0.075\linewidth, y=6mm]
-      % Trục TTF
+      % Time-to-failure (TTF) axis
       \draw[->] (0,0) -- (10.3,0) node[right]{TTF\%};
       \node at (0,-0.6){\footnotesize 0}; \node at (6,-0.6){\footnotesize 60}; \node at (7,-0.6){\footnotesize 70}; \node at (10,-0.6){\footnotesize 100};
       
-      % Các khối phân chia theo dòng thời gian (Train 60%, Val 10%, Test 30%)
+      % Contiguous temporal split blocks (Train 60%, Val 10%, Test 30%)
       \draw[fill=green!60,draw=green!60] (0,-0.4) rectangle (6,0.4);
       \node[color=white, font=\footnotesize] at (3,0) {Train};
-      
       \draw[fill=orange!80,draw=orange!80] (6,-0.4) rectangle (7,0.4);
       \node[font=\tiny] at (6.5,0) {Val};
-      
       \draw[fill=red!60,draw=red!60] (7,-0.4) rectangle (10,0.4);
       \node[color=white, font=\footnotesize] at (8.5,0) {Test};
     \end{tikzpicture}
@@ -236,6 +249,27 @@ A contiguous, TTF-aligned temporal split is adopted to avoid overlapped-window l
 \end{figure}
 
 
+
+\section{Related Work}
+\label{sec:related}
+Multimodal bearing diagnostics increasingly leverage complementary sensors to improve sensitivity in transitional regimes. In particular, combining vibration and temperature has been shown to improve identification of degradation stages compared to vibration-only approaches, which can struggle around transition boundaries \cite{li2025vibtemp_degradation}. Within non-time-frequency image inputs, we group methods that convert 1D vibration to 2D grayscale images (``1D-to-2D conversions'') separately from explicit time--frequency transforms; for example, Wen et al. synthesize 2D representations directly from raw 1D signals and learn with CNNs \cite{wen2018neurocomputing}.
+
+\section{Methodology}
+\label{sec:method}
+\subsection{ResNet-2D encoder}
+The vibration branch uses a 2D CNN encoder instantiated from a ResNet-style architecture to process STFT spectrograms; residual connections enable training of deeper feature extractors while maintaining gradient flow \cite{he2016resnet}.
+
+\subsection{Fusion strategy: late fusion}
+We adopt late fusion: temperature is summarized by a compact 6-D trend/statistical descriptor and projected to an embedding, which is concatenated with the vibration embedding immediately before the linear classification head to form the logits. This design allows the vibration encoder to focus on time--frequency cues while the temperature descriptor contributes complementary slow-varying trends.
+
+\subsection{Optimization}
+Unless otherwise noted, models are trained with AdamW, which decouples weight decay from the gradient-based update and typically yields more stable generalization than Adam with L2 \cite{loshchilov2019adamw}.
+
+\subsection{Transfer learning}
+We employ a two-phase workflow: a stratified split for initial training/selection, followed by temporal fine-tuning on contiguous, time-to-failure (TTF) segments. This transfer across operating regimes/time improves robustness under distribution shift, consistent with recent findings on robustness under varying conditions \cite{gao2024inffus_multisource}.
+
+\subsection{Data splitting}
+Two complementary protocols are used. For development, we use a file-wise \emph{stratified} split at 0.6/0.2/0.2 to enable early model selection. For deployment-oriented evaluation, we use a \emph{leakage-aware temporal} split aligned to TTF (train [0,60]\%, val [60,70]\%, test [70,100.1]\%), ensuring no overlapping windows across partitions and preventing look-ahead. This design addresses window-level leakage concerns \cite{kaufman2012leakage} and follows best practices for time-series evaluation \cite{bergmeir2012timeseriescv}.
 
 \section{Results}
 \label{sec:results}
@@ -277,7 +311,7 @@ The final model is further evaluated over the entire lifecycle $[0,100.1]\%$ TTF
 \end{figure}
 
 \subsection{Failure case analysis with broader temporal coverage}
-When evaluation expands to cover a broader range that includes more ambiguous mid-life samples, metrics can shift notably: Degrading is more frequently confused with Healthy and, depending on the slice, Healthy may have zero support. This highlights sensitivity near the Healthy--Degrading boundary and motivates stronger supervision and longer temporal context.
+When evaluation expands to cover a broader range that includes more ambiguous mid-life samples, metrics can shift notably: Degrading is more frequently confused with Healthy and, depending on the slice, Healthy may have zero support. This highlights sensitivity near the Healthy--Degrading boundary and motivates stronger supervision and longer temporal context, as well as multi-sensor cues that remain informative near transition regions.
 
 \FloatBarrier
 \section{Ablation and Discussion}
@@ -285,7 +319,7 @@ When evaluation expands to cover a broader range that includes more ambiguous mi
 \subsection{Ablation Studies}
 \label{sec:ablation}
 
-Table~\ref{tab:abl_summary} consolidates ablations across temporal slices. Key takeaways:
+Table~\ref{tab:abl_summary} consolidates ablations across temporal slices. In particular, on a representative late-life slice $[85,100.1]\%$, the multi-modal model (vibration+temperature) attains Macro-F1 $=0.9467$ versus $0.2593$ for vibration-only, with Fault F1 improving from $0.0000$ to $0.9600$, underscoring the benefit of multi-sensor fusion near transition and late stages. Key takeaways:
 \begin{itemize}
   \item \textbf{Modality effect.} On late-life slices, the vibration-only model fails to detect Fault (F1 $\approx$ 0.00), while the multi-modal model achieves strong Fault recognition (e.g., 0.9600 at $[90,100.1]\%$, 0.8889 at $[70,100.1]\%$).
   \item \textbf{Initialization.} Initializing temporal fine-tuning from the best stratified checkpoint outperforms training from scratch (same coverage).
@@ -297,15 +331,15 @@ Table~\ref{tab:abl_summary} consolidates ablations across temporal slices. Key t
 % Broad-slice numbers are included in the consolidated summary; see Table~\ref{tab:abl_summary}.
 
 \begin{table}[t]
-  \caption{Consolidated ablation summary across temporal slices (present-label metrics where applicable).}
+  \caption{Consolidated ablation summary across temporal slices (present-label metrics where applicable). \emph{Note:} \textemdash{} indicates metrics not applicable due to absent labels or single-class slices.}
   \label{tab:abl_summary}
   \centering
   \begin{tabular}{l l c c c c}
     \toprule
     Slice & Variant & Accuracy & Macro-F1 (present) & F1 Degrading & F1 Fault \\
     \midrule
-    $[70,90]\%$ & Multi-modal (vib+temp) & 0.8846 &  & 0.9388 &  \\
-    $[70,90]\%$ & Classical vib (SVM, 8D) & 1.0000 &  & 1.0000 &  \\
+    $[70,90]\%$ & Multi-modal (vib+temp) & 0.8846 & \textemdash{} & 0.9388 & \textemdash{} \\
+    $[70,90]\%$ & Classical vib (SVM, 8D) & 1.0000 & \textemdash{} & 1.0000 & \textemdash{} \\
     $[85,100.1]\%$ & Vib-only &  & 0.2593 & 0.5185 & 0.0000 \\
     $[85,100.1]\%$ & Multi-modal (vib+temp) &  & 0.9467 & 0.9333 & 0.9600 \\
     \midrule
@@ -313,11 +347,11 @@ Table~\ref{tab:abl_summary} consolidates ablations across temporal slices. Key t
     $[70,100.1]\%$ & Classical vib (SVM, 8D) & 0.6667 & 0.4000 & 0.8000 & 0.0000 \\
     $[70,100.1]\%$ & Multi-modal (vib+temp) & 0.8974 & 0.9045 & 0.9200 & 0.8889 \\
     \midrule
-    $[90,100.1]\%$ & Multi-modal (vib+temp) & 0.9231 &  &  & 0.9600 \\
-    $[90,100.1]\%$ & Classical vib (SVM, 8D) & 0.0000 &  &  & 0.0000 \\
-    $[90,100.1]\%$ & Vib-only & 0.0000 &  &  & 0.0000 \\
-    $[90,100.1]\%$ & No class-weights & 0.3077 &  &  & 0.4706 \\
-    $[90,100.1]\%$ & High-res (4096/1024, 224$\times$224) & 0.8462 &  &  & 0.9167 \\
+    $[90,100.1]\%$ & Multi-modal (vib+temp) & 0.9231 & \textemdash{} & \textemdash{} & 0.9600 \\
+    $[90,100.1]\%$ & Classical vib (SVM, 8D) & 0.0000 & \textemdash{} & \textemdash{} & 0.0000 \\
+    $[90,100.1]\%$ & Vib-only & 0.0000 & \textemdash{} & \textemdash{} & 0.0000 \\
+    $[90,100.1]\%$ & No class-weights & 0.3077 & \textemdash{} & \textemdash{} & 0.4706 \\
+    $[90,100.1]\%$ & High-res (4096/1024, 224$\times$224) & 0.8462 & \textemdash{} & \textemdash{} & 0.9167 \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -342,6 +376,7 @@ Limitations: single-run evaluation, empirical stage thresholds, possible residua
 
 \textbf{Future work} focuses on two directions: (i) cross-bearing/multi-run evaluations with additional external datasets to assess generalization; (ii) improving the Healthy--Degrading boundary via threshold-sensitivity analysis and stronger temporal/contextual modeling.
 
+\backmatter
 \bmhead{Acknowledgements}
 The authors acknowledge Nguyen Tat Thanh University, Ho Chi Minh City, Vietnam for supporting this study. The authors also thank the contributors of the open-source repository \cite{mdzalfirdausi_paderborn_repo}, whose code inspired parts of the implementation.
 
@@ -362,8 +397,11 @@ Not applicable.
 \bmhead{Data availability}
 The dataset used in this study is publicly available \cite{jung2024dib_rtf,jung2024mendeley_rtf}.
 
+\bmhead{Materials availability}
+Not applicable.
+
 \bmhead{Code availability}
-Code and configuration files for reproducing the preprocessing, splits, and evaluation will be released upon acceptance.
+An anonymized code repository (including preprocessing, splits, and evaluation scripts) is provided to reviewers with the submission; the code and configurations will be released publicly upon acceptance.
 
 \bmhead{Author contributions}
 Long Truong and Phu Le Nguyen contributed equally to this work. Both authors contributed to conceptualization, methodology, experiments, and writing.

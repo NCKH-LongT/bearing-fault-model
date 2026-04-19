@@ -1,0 +1,51 @@
+# Eval-only config pointing to external_eval workspace
+data_dir: external_eval/data
+manifest: external_eval/manifest.csv
+exclude_list: null
+
+sampling_rate: 25600  # set to actual SR of your new data
+window_seconds: 1.0
+hop_seconds: 0.5
+
+split_mode: temporal
+stratified:
+  train: 0.7
+  val: 0.1
+  test: 0.2
+random_seed: 42
+
+temporal_ttf:
+  train: [0.0, 60.0]
+  val:   [60.0, 70.0]
+  test:  [0.0, 100.1]
+
+stft:
+  n_fft: 4096
+  hop_length: 1024
+  window: hann
+  log_add: 1.0
+
+input_size: [224, 224]
+num_classes: 3
+
+model:
+  # Match the training modality of your checkpoint
+  use_temp: true
+
+train:
+  batch_size: 24
+  num_workers: 4
+  seed: 42
+
+optim:
+  use_onecycle: false
+  pct_start: 0.3
+
+log:
+  out_dir: runs/external_eval
+  save_best_by: macro_f1
+
+debug:
+  limit_files_test: null
+  seconds_cap: null
+
