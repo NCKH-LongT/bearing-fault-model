@@ -1,0 +1,28 @@
+{
+  "id": "svm_vib8",
+  "display_name": "Classical baseline - SVM vib 8",
+  "family": "classical",
+  "summary": "Handcrafted 8-D vibration features with SVM for a simple, reproducible classical baseline.",
+  "runner": {
+    "type": "classical",
+    "train_eval_entry": "classical_baselines/train_classical.py"
+  },
+  "protocols": {
+    "stratified": {
+      "config": "classical_baselines/configs/svm_vib8_stratified.yaml",
+      "primary_report": "runs/classical/svm_vib8_stratified/report_test.txt",
+      "notes": "File-wise stratified comparison baseline."
+    },
+    "temporal": {
+      "config": "classical_baselines/configs/svm_vib8_temporal.yaml",
+      "primary_report": "runs/classical/svm_vib8_temporal/report_test.txt",
+      "notes": "Leakage-aware temporal comparison baseline."
+    }
+  },
+  "artifacts": [
+    "model.pkl",
+    "report_test.txt",
+    "confusion_matrix_test.csv",
+    "predictions_test.csv"
+  ]
+}

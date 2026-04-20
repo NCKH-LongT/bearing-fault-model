@@ -1,0 +1,38 @@
+{
+  "id": "current_best_multimodal",
+  "display_name": "Current best baseline - Multi-modal",
+  "family": "deep_multimodal",
+  "summary": "Strongest current baseline in the repo, using vibration plus compact temperature descriptors.",
+  "runner": {
+    "type": "deep",
+    "train_entry": "train_logs.py",
+    "eval_entry": "eval_logs.py"
+  },
+  "protocols": {
+    "stratified": {
+      "config": "configs/logs_stft_train_strat.yaml",
+      "ckpt": "runs/logs_stft_strat/best.pt",
+      "primary_report": "runs/logs_stft_strat/eval/report.txt",
+      "notes": "Stratified pre-training stage used as the initialization source for later temporal fine-tuning."
+    },
+    "temporal": {
+      "config": "configs/logs_stft_full_temporal_gating.yaml",
+      "ckpt": "runs/logs_stft_temporal_gating_final/best.pt",
+      "primary_report": "runs/logs_stft_temporal_gating_final/eval/report.txt",
+      "notes": "Current best temporal multi-modal baseline for deployment-oriented comparison."
+    },
+    "fullrange": {
+      "config": "configs/logs_stft_full_temporal_gating_alltest.yaml",
+      "ckpt": "runs/logs_stft_temporal_gating_fullrange/best.pt",
+      "primary_report": "runs/logs_stft_temporal_gating_fullrange/eval/report.txt",
+      "notes": "Full lifecycle evaluation for overall-file comparison; can also be evaluated with vote aggregation."
+    }
+  },
+  "artifacts": [
+    "best.pt",
+    "train_log.csv",
+    "eval/report.txt",
+    "eval/report_present.txt",
+    "eval/confusion_matrix.png"
+  ]
+}

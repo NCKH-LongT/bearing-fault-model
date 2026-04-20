@@ -1,0 +1,32 @@
+{
+  "id": "vibration_only_cnn",
+  "display_name": "Deep baseline - Vibration-only CNN",
+  "family": "deep",
+  "summary": "Single-modality deep baseline that uses only vibration STFT input and disables the temperature branch.",
+  "runner": {
+    "type": "deep",
+    "train_entry": "train_logs.py",
+    "eval_entry": "eval_logs.py"
+  },
+  "protocols": {
+    "stratified": {
+      "config": "configs/ablation/logs_stft_train_strat_vib.yaml",
+      "ckpt": "runs/ablations/strat_vib_only/best.pt",
+      "primary_report": "runs/ablations/strat_vib_only/eval/report.txt",
+      "notes": "Development split for model selection and fair deep-only comparison."
+    },
+    "temporal": {
+      "config": "configs/ablation/logs_stft_temporal_vib_ft.yaml",
+      "ckpt": "runs/ablations/temporal_vib_only/best.pt",
+      "primary_report": "runs/ablations/temporal_vib_only/eval/report.txt",
+      "notes": "Leakage-aware temporal fine-tuning baseline initialized from stratified vibration-only training."
+    }
+  },
+  "artifacts": [
+    "best.pt",
+    "train_log.csv",
+    "eval/report.txt",
+    "eval/report_present.txt",
+    "eval/confusion_matrix.png"
+  ]
+}
