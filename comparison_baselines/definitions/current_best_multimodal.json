@@ -2,7 +2,7 @@
   "id": "current_best_multimodal",
   "display_name": "Current best baseline - Multi-modal",
   "family": "deep_multimodal",
-  "summary": "Strongest current baseline in the repo, using vibration plus compact temperature descriptors.",
+  "summary": "Strongest current baseline in the repo, using vibration + compact temperature descriptors.",
   "runner": {
     "type": "deep",
     "train_entry": "train_logs.py",
@@ -10,16 +10,16 @@
   },
   "protocols": {
     "stratified": {
-      "config": "configs/logs_stft_train_strat.yaml",
-      "ckpt": "runs/logs_stft_strat/best.pt",
-      "primary_report": "runs/logs_stft_strat/eval/report.txt",
-      "notes": "Stratified pre-training stage used as the initialization source for later temporal fine-tuning."
+      "config": "runs/logs_stft_strat/auto_r22/config.yaml",
+      "ckpt": "runs/logs_stft_strat/auto_r22/best.pt",
+      "primary_report": "runs/logs_stft_strat/auto_r22/eval/report.txt",
+      "notes": "Best stratified checkpoint from auto-training round 22 (2048/512, 160x160). Macro-F1=0.7762. DO NOT use runs/logs_stft_strat/best.pt — that is a different, weaker run (4096/1024, 224x224, trained from scratch)."
     },
     "temporal": {
       "config": "configs/logs_stft_full_temporal_gating.yaml",
       "ckpt": "runs/logs_stft_temporal_gating_final/best.pt",
       "primary_report": "runs/logs_stft_temporal_gating_final/eval/report.txt",
-      "notes": "Current best temporal multi-modal baseline for deployment-oriented comparison."
+      "notes": "Current best temporal multi-modal baseline. Initialized from auto_r22/best.pt."
     },
     "fullrange": {
       "config": "configs/logs_stft_full_temporal_gating_alltest.yaml",

@@ -2,7 +2,7 @@
   "id": "vibration_only_cnn",
   "display_name": "Deep baseline - Vibration-only CNN",
   "family": "deep",
-  "summary": "Single-modality deep baseline that uses only vibration STFT input and disables the temperature branch.",
+  "summary": "Single-modality deep baseline using only vibration STFT. Temperature branch disabled.",
   "runner": {
     "type": "deep",
     "train_entry": "train_logs.py",
@@ -13,13 +13,19 @@
       "config": "configs/ablation/logs_stft_train_strat_vib.yaml",
       "ckpt": "runs/ablations/strat_vib_only/best.pt",
       "primary_report": "runs/ablations/strat_vib_only/eval/report.txt",
-      "notes": "Development split for model selection and fair deep-only comparison."
+      "notes": "Phase 1: train from scratch on stratified split. n_fft=2048, 160x160. Must run before temporal phase."
     },
     "temporal": {
+      "config": "configs/ablation/logs_stft_temporal_vib_ft_fair.yaml",
+      "ckpt": "runs/ablations/temporal_vib_only_fair/best.pt",
+      "primary_report": "runs/ablations/temporal_vib_only_fair/eval/report.txt",
+      "notes": "Phase 2: fine-tune from stratified checkpoint. STFT params matched to multimodal temporal (n_fft=2048, 160x160) for fair comparison. Requires stratified phase to complete first."
+    },
+    "temporal_old": {
       "config": "configs/ablation/logs_stft_temporal_vib_ft.yaml",
       "ckpt": "runs/ablations/temporal_vib_only/best.pt",
       "primary_report": "runs/ablations/temporal_vib_only/eval/report.txt",
-      "notes": "Leakage-aware temporal fine-tuning baseline initialized from stratified vibration-only training."
+      "notes": "OLD config: uses n_fft=4096, 224x224 — different from multimodal temporal. Do not use for paper comparison."
     }
   },
   "artifacts": [

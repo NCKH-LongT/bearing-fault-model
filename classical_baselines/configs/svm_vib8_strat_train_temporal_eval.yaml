@@ -1,0 +1,47 @@
+data_dir: data
+manifest: data/manifest.csv
+exclude_list: null
+
+sampling_rate: 25600
+window_seconds: 1.0
+hop_seconds: 0.5
+
+# Train on stratified split so SVM sees all 3 classes (Healthy/Degrading/Fault).
+# Evaluate on temporal test [70,100.1]% to match the deployment-oriented protocol
+# used for deep models. This is the fair classical baseline for temporal comparison:
+# deep models also train on stratified (phase 1) before being evaluated on temporal test.
+train_split_mode: stratified
+eval_split_mode: temporal
+
+stratified:
+  train: 0.6
+  val: 0.2
+  test: 0.2
+  min_per_class_val: 5
+  min_per_class_test: 5
+random_seed: 42
+
+temporal_ttf:
+  train: [0.0, 60.0]
+  val: [60.0, 70.0]
+  test: [70.0, 100.1]
+
+classical:
+  model_type: svm
+  feature_name: vib_stats_8d
+  aggregation: mean_proba
+  eval_split: test
+  svm:
+    C: 1.0
+    kernel: rbf
+    gamma: scale
+    class_weight: balanced
+
+log:
+  out_dir: runs/classical/svm_vib8_strat_train_temporal_eval
+
+debug:
+  limit_files_train: null
+  limit_files_val: null
+  limit_files_test: null
+  seconds_cap: null

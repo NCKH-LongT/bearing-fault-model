@@ -299,6 +299,34 @@ Figure~\ref{fig:temporal_pair} summarizes temporal performance on the late-life 
   \label{fig:temporal_pair}
 \end{figure}
 
+\subsection{Baseline comparison}
+\label{sec:baseline_comparison}
+
+Table~\ref{tab:baseline_comparison} reports file-wise performance of the three comparison baselines on both protocols.
+For the temporal protocol, Healthy is absent from the test slice [70,100.1]\%; Macro-F1 is therefore computed over present classes (Degrading, Fault) only.
+The classical SVM (trained on stratified split to ensure all three classes are observed, then evaluated on temporal test) achieves Fault F1\,=\,0.375, demonstrating partial Fault detection with handcrafted features alone.
+The vibration-only CNN collapses to predicting only Degrading (Fault F1\,=\,0.00) in the temporal setting, despite using a deep architecture.
+The multi-modal model correctly separates both Degrading and Fault (Fault F1\,=\,0.89), with the gap over the vibration-only CNN isolating the contribution of the temperature branch.
+
+\begin{table}[htbp]
+  \caption{Comparison of three baselines on stratified (development) and temporal [70,100.1]\% (deployment) protocols, evaluated file-wise.
+  Multi-modal stratified result is from the best auto-training checkpoint (round 22, n\_fft=2048, 160$\times$160).
+  $^\dagger$Macro-F1 over present classes only (Healthy absent in temporal test).}
+  \label{tab:baseline_comparison}
+  \centering
+  \begin{tabular}{l cc cc}
+    \toprule
+    & \multicolumn{2}{c}{Stratified} & \multicolumn{2}{c}{Temporal [70,100.1]\%} \\
+    \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+    Method & Acc & Macro-F1 & Acc & Macro-F1$^\dagger$ \\
+    \midrule
+    Classical vib (SVM, 8D)    & 0.7241 & 0.6190 & 0.6923 & 0.5875 \\
+    Vibration-only CNN          & 0.2759 & 0.1441 & 0.6667 & 0.4000 \\
+    \textbf{Multi-modal (Ours)} & \textbf{0.7241} & \textbf{0.7762} & \textbf{0.8974} & \textbf{0.9045} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \subsection{Full-range temporal (0--100.1\%)}
 The final model is further evaluated over the entire lifecycle $[0,100.1]\%$ TTF. With \textbf{majority vote} aggregation, the model attains \textbf{Accuracy $=0.8915$} and \textbf{Macro-F1 $=0.8739$}. Using \textbf{mean-logit} aggregation, Accuracy is $=0.7752$ and Macro-F1 is $=0.8006$. See Figure~\ref{fig:fullrange_pair} for a visual summary.
 \begin{figure}[t]

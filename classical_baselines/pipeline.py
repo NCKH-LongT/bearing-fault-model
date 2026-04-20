@@ -29,8 +29,9 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def build_split_items(cfg: dict, split: str) -> List[Dict]:
-    split_mode = cfg.get("split_mode", "temporal")
+def build_split_items(cfg: dict, split: str, override_split_mode: str = None) -> List[Dict]:
+    # allow caller to override split_mode (e.g. train on stratified, eval on temporal)
+    split_mode = override_split_mode or cfg.get("split_mode", "temporal")
     strat = cfg.get("stratified", {}) or {}
     rnd_seed = cfg.get("random_seed", 42)
     debug_cfg = cfg.get("debug", {}) or {}
@@ -113,8 +114,8 @@ def extract_window_features(
     return np.stack(feats, axis=0).astype(np.float32)
 
 
-def build_training_matrix(cfg: dict, split: str) -> Tuple[np.ndarray, np.ndarray]:
-    items = build_split_items(cfg, split)
+def build_training_matrix(cfg: dict, split: str, override_split_mode: str = None) -> Tuple[np.ndarray, np.ndarray]:
+    items = build_split_items(cfg, split, override_split_mode=override_split_mode)
     win = int(round(float(cfg["window_seconds"]) * int(cfg["sampling_rate"])))
     hop = int(round(float(cfg["hop_seconds"]) * int(cfg["sampling_rate"])))
     feature_name = cfg["classical"]["feature_name"]
@@ -194,8 +195,8 @@ def _window_scores(model, X: np.ndarray) -> np.ndarray:
     return scores
 
 
-def evaluate_filewise(cfg: dict, model, split: str) -> Tuple[List[int], List[int]]:
-    items = build_split_items(cfg, split)
+def evaluate_filewise(cfg: dict, model, split: str, override_split_mode: str = None) -> Tuple[List[int], List[int]]:
+    items = build_split_items(cfg, split, override_split_mode=override_split_mode)
     win = int(round(float(cfg["window_seconds"]) * int(cfg["sampling_rate"])))
     hop = int(round(float(cfg["hop_seconds"]) * int(cfg["sampling_rate"])))
     feature_name = cfg["classical"]["feature_name"]
@@ -250,15 +251,42 @@ def save_artifacts(cfg: dict, model, ys: Sequence[int], ps: Sequence[int], split
 
 
 def train_and_eval(cfg: dict) -> None:
-    X_train, y_train = build_training_matrix(cfg, split="train")
+    # train_split_mode / eval_split_mode allow mixing protocols.
+    # Example: train on stratified (sees all 3 classes), eval on temporal test
+    # (deployment-oriented). This is the fair comparison for classical models
+    # that cannot do two-phase training like deep models.
+    train_split_mode = cfg.get("train_split_mode") or cfg.get("split_mode", "stratified")
+    eval_split_mode = cfg.get("eval_split_mode") or cfg.get("split_mode", "stratified")
+
+    X_train, y_train = build_training_matrix(cfg, split="train", override_split_mode=train_split_mode)
+
+    # For pure temporal training: merge val since SVM has no early-stopping
+    # and temporal train-only [0,60]% often lacks minority classes.
+    if train_split_mode == "temporal":
+        try:
+            X_val, y_val = build_training_matrix(cfg, split="val", override_split_mode=train_split_mode)
+            X_train = np.concatenate([X_train, X_val], axis=0)
+            y_train = np.concatenate([y_train, y_val], axis=0)
+        except RuntimeError:
+            pass
+
+    n_classes = len(np.unique(y_train))
+    if n_classes < 2:
+        raise RuntimeError(
+            f"Training data has only {n_classes} class(es) under "
+            f"train_split_mode='{train_split_mode}'. "
+            "Use train_split_mode: stratified to ensure all classes are present."
+        )
+
     model = build_model(cfg)
     model.fit(X_train, y_train)
 
     eval_split = cfg["classical"].get("eval_split", "test")
-    ys, ps = evaluate_filewise(cfg, model, split=eval_split)
+    ys, ps = evaluate_filewise(cfg, model, split=eval_split, override_split_mode=eval_split_mode)
     save_artifacts(cfg, model, ys, ps, split=eval_split)
 
-    print(f"Train windows: {len(X_train)}")
-    print(f"Eval files: {len(ys)}")
+    classes_in_train = sorted(np.unique(y_train).tolist())
+    print(f"Train windows: {len(X_train)}  |  classes seen: {[CLASS_NAMES[c] for c in classes_in_train]}")
+    print(f"Eval files ({eval_split_mode}/{eval_split}): {len(ys)}")
     print(classification_report(ys, ps, target_names=CLASS_NAMES, digits=4, zero_division=0))
 

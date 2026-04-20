@@ -11,12 +11,17 @@
     "stratified": {
       "config": "classical_baselines/configs/svm_vib8_stratified.yaml",
       "primary_report": "runs/classical/svm_vib8_stratified/report_test.txt",
-      "notes": "File-wise stratified comparison baseline."
+      "notes": "Train and eval on same stratified split. Fair development comparison."
     },
     "temporal": {
+      "config": "classical_baselines/configs/svm_vib8_strat_train_temporal_eval.yaml",
+      "primary_report": "runs/classical/svm_vib8_strat_train_temporal_eval/report_test.txt",
+      "notes": "Train on stratified (all 3 classes visible), eval on temporal test [70,100.1]%. This mirrors deep model phase-1 pretraining and is the fair temporal comparison for classical models."
+    },
+    "temporal_pure": {
       "config": "classical_baselines/configs/svm_vib8_temporal.yaml",
       "primary_report": "runs/classical/svm_vib8_temporal/report_test.txt",
-      "notes": "Leakage-aware temporal comparison baseline."
+      "notes": "Train on temporal [0,70]% only. NOTE: temporal train data has zero Fault examples (only Healthy+Degrading), so Fault F1=0 is expected by construction, not a model failure. Do not use this for paper comparison."
     }
   },
   "artifacts": [
