@@ -40,6 +40,9 @@ class LogsTTFDataset(Dataset):
         exclude_list: Optional[str] = None,
         transform=None,
         temp_feature_fn=None,
+        temp_feat_dim: Optional[int] = None,
+        temp_context_seconds: Optional[float] = None,
+        temp_context_causal: bool = True,
         limit_files: Optional[int] = None,
         seconds_cap: Optional[float] = None,
     ):
@@ -47,17 +50,52 @@ class LogsTTFDataset(Dataset):
         self.data_dir = data_dir
         self.transform = transform
         self.temp_feature_fn = temp_feature_fn
+        if temp_feat_dim is None:
+            self.temp_feat_dim = 6 if self.temp_feature_fn else 0
+        else:
+            self.temp_feat_dim = int(max(0, temp_feat_dim))
         self.sampling_rate = sampling_rate
         self.win = int(round(window_seconds * sampling_rate))
         self.hop = int(round(hop_seconds * sampling_rate))
 
         self.seconds_cap = seconds_cap
+        self.temp_context_causal = bool(temp_context_causal)
+        if temp_context_seconds is None:
+            self.temp_context = 0
+        else:
+            self.temp_context = int(round(float(temp_context_seconds) * sampling_rate))
         self.items = self._build_index(
             manifest_path, split, ttf_split, split_mode,
             train_ratio, val_ratio, test_ratio, random_seed,
             min_per_class_val, min_per_class_test,
             exclude_list, limit_files
         )
+
+    def _slice_temp_context(self, temp: np.ndarray, s: int, e: int) -> np.ndarray:
+        """
+        Return a temperature segment to compute temp features for a window [s,e).
+
+        If temp_context is 0 (disabled), returns temp[s:e].
+        If enabled:
+          - causal=True: use only history up to e, i.e. [max(0, e-ctx), e)
+          - causal=False: use centered context around the window midpoint
+        """
+        n = int(temp.shape[0])
+        if self.temp_context <= 0 or self.temp_context <= (e - s):
+            return temp[s:e]
+
+        ctx = int(self.temp_context)
+        if self.temp_context_causal:
+            a = max(0, int(e) - ctx)
+            b = int(e)
+            return temp[a:b]
+
+        mid = int((s + e) // 2)
+        a = max(0, mid - ctx // 2)
+        b = min(n, a + ctx)
+        # If we hit the end, shift start left to keep length ~ctx
+        a = max(0, b - ctx)
+        return temp[a:b]
 
     def _build_index(
         self,
@@ -248,13 +286,16 @@ class LogsTTFDataset(Dataset):
             widx = 0
         s, e = windows[widx]
         vib_w = vib[s:e]  # (win,2)
-        temp_w = temp[s:e]  # (win,2)
+        temp_w = self._slice_temp_context(temp, s, e)  # (ctx,2) or (win,2)
 
         # Apply transform for vibration (e.g., STFT -> 2xFxT)
         x = self.transform(vib_w) if self.transform else vib_w
 
         # Temperature features per window
-        tfeat = self.temp_feature_fn(temp_w) if self.temp_feature_fn else np.zeros(6, dtype=np.float32)
+        if self.temp_feature_fn:
+            tfeat = self.temp_feature_fn(temp_w)
+        else:
+            tfeat = np.zeros(self.temp_feat_dim, dtype=np.float32)
 
         y = item["label"]
         return x, torch.tensor(tfeat, dtype=torch.float32), torch.tensor(y, dtype=torch.long)
@@ -272,14 +313,17 @@ class LogsTTFDataset(Dataset):
         T = []
         for s, e in windows:
             vib_w = vib[s:e]
-            temp_w = temp[s:e]
+            temp_w = self._slice_temp_context(temp, s, e)
             x = self.transform(vib_w) if self.transform else vib_w
-            t = self.temp_feature_fn(temp_w) if self.temp_feature_fn else np.zeros(6, dtype=np.float32)
+            if self.temp_feature_fn:
+                t = self.temp_feature_fn(temp_w)
+            else:
+                t = np.zeros(self.temp_feat_dim, dtype=np.float32)
             X.append(x)
             T.append(t)
         if not X:
             raise IndexError(f"No windows for file: {item['path']}")
         X = torch.stack(X, dim=0)  # (W,2,H,W)
-        T = torch.tensor(np.stack(T, axis=0), dtype=torch.float32)  # (W,6)
+        T = torch.tensor(np.stack(T, axis=0), dtype=torch.float32)  # (W,D)
         y = torch.tensor(item["label"], dtype=torch.long)
         return X, T, y

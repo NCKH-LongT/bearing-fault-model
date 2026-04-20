@@ -1,0 +1,37 @@
+data_dir: data
+manifest: data/manifest.csv
+exclude_list: null
+
+sampling_rate: 25600
+window_seconds: 1.0
+hop_seconds: 0.5
+
+split_mode: stratified
+stratified:
+  train: 0.6
+  val: 0.2
+  test: 0.2
+  min_per_class_val: 5
+  min_per_class_test: 5
+random_seed: 42
+
+classical:
+  model_type: svm
+  feature_name: vib_stats_8d
+  aggregation: mean_proba
+  eval_split: test
+  svm:
+    C: 1.0
+    kernel: rbf
+    gamma: scale
+    class_weight: balanced
+
+log:
+  out_dir: runs/classical/svm_vib8_stratified
+
+debug:
+  limit_files_train: null
+  limit_files_val: null
+  limit_files_test: null
+  seconds_cap: null
+

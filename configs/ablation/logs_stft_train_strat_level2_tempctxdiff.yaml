@@ -1,0 +1,80 @@
+# Level 2 (nhẹ) — mục tiêu: cải thiện lớp Degrading bằng cách làm giàu nhiệt độ
+#
+# Ý tưởng:
+# - Giữ nguyên pipeline rung (STFT + CNN) để không phá vỡ baseline.
+# - Nhiệt độ trong 1s thường rất nhiễu nếu dùng slope tức thời → tính đặc trưng nhiệt độ trên "context" dài hơn.
+# - Bổ sung kênh (temp_bearing - temp_atm) để nhấn mạnh chênh lệch nhiệt tại ổ bi so với môi trường.
+#
+# Lưu ý:
+# - Đây vẫn là mô hình "window-based" (không sequence), nên thuộc cấp độ 2: sửa feature nhẹ + context.
+# - `temp_feature.context_seconds` chỉ áp dụng cho tính feature nhiệt độ; STFT rung vẫn dùng `window_seconds`.
+
+data_dir: data
+manifest: data/manifest.csv
+exclude_list: null
+
+sampling_rate: 25600
+window_seconds: 1.0
+hop_seconds: 0.5
+
+split_mode: stratified
+stratified:
+  train: 0.6
+  val: 0.2
+  test: 0.2
+  min_per_class_val: 5
+  min_per_class_test: 5
+random_seed: 42
+
+stft:
+  n_fft: 4096
+  hop_length: 1024
+  window: hann
+  log_add: 1.0
+
+input_size: [224, 224]
+num_classes: 3
+
+model:
+  use_temp: true
+  temp_feature:
+    # stats6: [mean/std/slope] cho (bearing, ambient) → 6-D (baseline)
+    # stats9_diff: thêm kênh (bearing-ambient) → 9-D (khuyến nghị cho cấp 2)
+    type: stats9_diff
+    # Tính feature nhiệt độ trên một đoạn dài hơn (giảm nhiễu slope 1s)
+    # Ví dụ 120s = 2 phút.
+    context_seconds: 120.0
+    # causal=true: chỉ dùng quá khứ tới thời điểm window hiện tại (deployment-friendly)
+    causal: true
+
+train:
+  batch_size: 24
+  epochs: 80
+  lr: 2.0e-4
+  weight_decay: 1.0e-3
+  num_workers: 4
+  seed: 42
+  early_stop_patience: 20
+  early_stop: true
+  prefetch_factor: 2
+  eval_every: 1
+  val_max_windows: 50
+  use_class_weights: false
+  use_amp: true
+  label_smoothing: 0.05
+  balanced_sampling: true
+
+optim:
+  use_onecycle: false
+  pct_start: 0.3
+
+log:
+  out_dir: runs/logs_stft_strat_l2_tempctxdiff
+  save_best_by: macro_f1
+
+debug:
+  limit_files_train: null
+  limit_files_val: null
+  limit_files_test: null
+  seconds_cap: null
+

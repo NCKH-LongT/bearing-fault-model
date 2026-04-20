@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from datasets.logs_ttf import LogsTTFDataset
 from features.spectrogram import SpectrogramTransform
-from features.temp_features import temp_stats_window
+from features.temp_features import resolve_temp_feature
 from models.resnet2d import ResNet18Small
 
 try:
@@ -76,7 +76,19 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
     ttf_cfg = cfg.get("temporal_ttf", {}) if split_mode == "temporal" else {}
     ttf_test = tuple(ttf_cfg.get("test", (80.0, 100.1))) if split_mode == "temporal" else (0.8, 1.0)
 
-    use_temp = bool(cfg.get("model", {}).get("use_temp", True))
+    model_cfg = cfg.get("model", {}) or {}
+    use_temp = bool(model_cfg.get("use_temp", True))
+    temp_feat_fn = None
+    temp_feat_dim = 0
+    temp_ctx_seconds = None
+    temp_ctx_causal = True
+    if use_temp:
+        temp_cfg = model_cfg.get("temp_feature", {}) or {}
+        temp_type = temp_cfg.get("type", "stats6")
+        temp_feat_fn, temp_feat_dim = resolve_temp_feature(temp_type)
+        temp_ctx_seconds = temp_cfg.get("context_seconds")
+        temp_ctx_seconds = float(temp_ctx_seconds) if temp_ctx_seconds is not None else None
+        temp_ctx_causal = bool(temp_cfg.get("causal", True))
 
     test_ds = LogsTTFDataset(
         cfg["data_dir"], cfg["manifest"], split="test",
@@ -92,7 +104,10 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         min_per_class_test=strat.get("min_per_class_test"),
         random_seed=rnd_seed,
         transform=te_spec,
-        temp_feature_fn=(temp_stats_window if use_temp else None),
+        temp_feature_fn=temp_feat_fn,
+        temp_feat_dim=temp_feat_dim,
+        temp_context_seconds=temp_ctx_seconds,
+        temp_context_causal=temp_ctx_causal,
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_test"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
@@ -106,7 +121,7 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         pin_memory=pin_mem,
     )
 
-    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=(6 if use_temp else 0))
+    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=temp_feat_dim)
     # Safe, forward-compatible load: prefer weights_only and accept both formats
     state = torch.load(ckpt_path, map_location=device, weights_only=True)
     sd = state["model"] if isinstance(state, dict) and "model" in state else state

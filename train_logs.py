@@ -12,7 +12,7 @@ from typing import List, Tuple, Optional
 
 from datasets.logs_ttf import LogsTTFDataset
 from features.spectrogram import SpectrogramTransform
-from features.temp_features import temp_stats_window
+from features.temp_features import resolve_temp_feature
 from models.resnet2d import ResNet18Small
 
 
@@ -144,7 +144,21 @@ def main(cfg_path: str):
     ttf_val = tuple(ttf_cfg.get("val", (70.0, 80.0))) if split_mode == "temporal" else (0.7, 0.8)
     ttf_test = tuple(ttf_cfg.get("test", (80.0, 100.1))) if split_mode == "temporal" else (0.8, 1.0)
 
-    use_temp = bool(cfg.get("model", {}).get("use_temp", True))
+    model_cfg = cfg.get("model", {}) or {}
+    use_temp = bool(model_cfg.get("use_temp", True))
+    temp_feat_fn = None
+    temp_feat_dim = 0
+    temp_ctx_seconds = None
+    temp_ctx_causal = True
+    if use_temp:
+        temp_cfg = model_cfg.get("temp_feature", {}) or {}
+        temp_type = temp_cfg.get("type", "stats6")
+        temp_feat_fn, temp_feat_dim = resolve_temp_feature(temp_type)
+        # Optional: compute temp features using a longer context than vib windows
+        # This is useful because 1-second temperature slope can be noisy.
+        temp_ctx_seconds = temp_cfg.get("context_seconds")
+        temp_ctx_seconds = float(temp_ctx_seconds) if temp_ctx_seconds is not None else None
+        temp_ctx_causal = bool(temp_cfg.get("causal", True))
 
     train_ds = LogsTTFDataset(
         cfg["data_dir"], cfg["manifest"], split="train",
@@ -160,7 +174,10 @@ def main(cfg_path: str):
         min_per_class_test=strat.get("min_per_class_test"),
         random_seed=rnd_seed,
         transform=tr_spec,
-        temp_feature_fn=(temp_stats_window if use_temp else None),
+        temp_feature_fn=temp_feat_fn,
+        temp_feat_dim=temp_feat_dim,
+        temp_context_seconds=temp_ctx_seconds,
+        temp_context_causal=temp_ctx_causal,
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_train"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
@@ -179,7 +196,10 @@ def main(cfg_path: str):
         min_per_class_test=strat.get("min_per_class_test"),
         random_seed=rnd_seed,
         transform=te_spec,
-        temp_feature_fn=(temp_stats_window if use_temp else None),
+        temp_feature_fn=temp_feat_fn,
+        temp_feat_dim=temp_feat_dim,
+        temp_context_seconds=temp_ctx_seconds,
+        temp_context_causal=temp_ctx_causal,
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_val"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
@@ -220,7 +240,7 @@ def main(cfg_path: str):
     )
 
     # Model
-    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=(6 if use_temp else 0)).to(device)
+    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=temp_feat_dim).to(device)
     # Optional: initialize from a pretrained checkpoint for fine-tuning
     init_from = cfg["train"].get("init_from")
     if init_from:

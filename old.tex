@@ -79,6 +79,149 @@ In addition to temporal leakage, generalization across different bearings or ope
 \subsection{Multi-sensor fusion with temperature and vibration}
 Multi-sensor learning is a practical direction for improving robustness, as temperature may capture thermal effects associated with friction, lubrication issues, or abnormal contact conditions. Huang et al.~\cite{huang2023esrel_tempvib} showed that combining temperature-related signals with vibration features can improve diagnostic performance compared with single-sensor baselines. Inspired by this direction, we fuse vibration time--frequency CNN features with compact temperature trend/statistical descriptors, aiming to improve Degrading-stage recognition in run-to-failure monitoring while keeping the model lightweight.
 
+\section{Methodology}
+\label{sec:method}
+
+\subsection{Overview}
+We propose a lightweight multi-modal pipeline for bearing health stage recognition. For each 1.0-s window, we transform two-axis vibration into a 2-channel log-spectrogram image and summarize two-channel temperature into a compact 6-D descriptor. A small ResNet-style CNN encodes vibration patterns, a linear layer embeds temperature features, and a late-fusion classifier predicts the health stage. To bridge development and deployment, we adopt a two-phase workflow: stratified training followed by leakage-aware temporal fine-tuning along the TTF axis. Implementation-wise, our code adapts components from an open-source repository~\cite{mdzalfirdausi_paderborn_repo} and customizes them for TTF-aligned temporal splitting, per-window/per-frequency spectrogram normalization, temperature-fusion at the head, and file-wise mean-logit aggregation.
+
+\subsection{Block Diagram}
+Figure~\ref{fig:block} illustrates the end-to-end data flow from raw inputs to file-wise decisions and where fusion occurs.
+
+\begin{figure}[H]
+  \centering
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tikzpicture}[
+    node distance=8mm and 8mm,
+    box/.style={draw, rounded corners, align=center, minimum height=7mm, minimum width=18mm, font=\small},
+    arr/.style={-Latex}
+  ]
+    % Top chain (compact)
+    \node[box] (vib) {Vibration\\(x,y)};
+    \node[box, right=of vib] (wstft) {Windowing+STFT\\log + per-freq norm};
+    \node[box, right=of wstft] (spec) {2-ch Spectrogram\\$H\times W$};
+    \node[box, right=of spec] (cnn) {ResNet-2D\\Encoder};
+    \node[box, right=of cnn] (vz) {Vibration emb.\\$\mathbf{h}_v\in\mathbb{R}^{256}$};
+
+    % Temp branch (compact)
+    \node[box, below=12mm of wstft, xshift=0mm] (temp) {Temperature\\(bearing, ambient)};
+    \node[box, right=of temp] (tfeat) {6-D features\\+ Linear(32)};
+    \node[box, right=of tfeat] (tz) {Temp emb.\\$\mathbf{t}\in\mathbb{R}^{32}$};
+
+    % Fusion + classifier + aggregation
+    \node[box, right=16mm of vz] (fuse) {Fusion\\$[\mathbf{h}_v;\mathbf{t}]$};
+    \node[box, right=of fuse] (cls) {Classifier\\(logits)};
+    \node[box, right=of cls] (agg) {File-wise mean\\logits $\to$ Pred.};
+
+    % Arrows top chain
+    \draw[arr] (vib) -- (wstft);
+    \draw[arr] (wstft) -- (spec);
+    \draw[arr] (spec) -- (cnn);
+    \draw[arr] (cnn) -- (vz);
+
+    % Temp arrows
+    \draw[arr] (temp) -- (tfeat);
+    \draw[arr] (tfeat) -- (tz);
+
+    % Fusion arrows
+    \draw[arr] (vz) -- (fuse);
+    % Route temp embedding to fusion from below to avoid crossing blocks
+    \draw[arr] (tz.east) to[out=0,in=270] (fuse.south);
+    \draw[arr] (fuse) -- (cls);
+    \draw[arr] (cls) -- (agg);
+  \end{tikzpicture}
+  \end{adjustbox}
+  \caption{Block diagram of the proposed multi-modal pipeline with late fusion and file-wise mean-logit aggregation.}
+  \label{fig:block}
+\end{figure}
+
+\subsection{Synchronous windowing for vibration and temperature}
+In the current codebase, vibration and temperature are sampled synchronously at 25.6 kHz and stored as four channels per sample (two vibration axes + two temperature channels). We segment the raw sequence into 1.0-s windows with 50\% overlap (hop 0.5 s). For each window with indices $[s:e]$, we slice vibration and temperature using the same indices:
+$\mathbf{x}_v=\mathrm{arr}[s:e,0{:}2]$ and $\mathbf{x}_t=\mathrm{arr}[s:e,2{:}4]$.
+This design avoids any additional timestamp alignment. If temperature were sampled at a different rate, an explicit resampling/alignment step would be required.
+
+\subsection{Waveform sanitization and per-window z-score}
+Before computing time--frequency features, we sanitize each vibration window by replacing NaN/Inf values with zeros. Then we apply per-window, per-channel z-score normalization:
+\begin{equation}
+\mathbf{x}'_{v,k} = \frac{\mathbf{x}_{v,k} - \mu(\mathbf{x}_{v,k})}{\sigma(\mathbf{x}_{v,k})+\epsilon},\quad k\in\{1,2\},
+\end{equation}
+where $\mu(\cdot)$ and $\sigma(\cdot)$ are computed within the 1.0-s window for each axis, and $\epsilon$ is a small constant for numerical stability.
+
+\subsection{STFT magnitude and log-compression}
+Each vibration window is converted to a time--frequency representation using STFT with $n\_{fft}=4096$, $hop\_length=1024$, and a Hann window. The magnitude is log-compressed and normalized as described in Section~\ref{sec:method}, then resized to a fixed $224\times224$ resolution.
+We take magnitude and apply log-compression to reduce dynamic range:
+\begin{equation}
+\mathbf{S}_k = \log\left(1 + \alpha |\mathbf{X}_k|\right),
+\end{equation}
+where $\alpha=1.0$ (i.e., \texttt{torch.log1p(mag * log\_add)} with \texttt{log\_add=1.0}).
+
+\subsection{Per-frequency normalization across time frames}
+To stabilize ``brightness'' variations across frames, we normalize each frequency bin across the time dimension (z-score over frames for each frequency):
+\begin{equation}
+\tilde{\mathbf{S}}_k(f,t)=\frac{\mathbf{S}_k(f,t)-\mu_t(\mathbf{S}_k(f,\cdot))}{\sigma_t(\mathbf{S}_k(f,\cdot))+\epsilon}.
+\end{equation}
+This step is performed independently for each vibration axis.
+
+\subsection{Resize and channel stacking}
+We resize each normalized spectrogram $\tilde{\mathbf{S}}_k$ to the target size $H\times W$ (current configuration: $224\times224$) using bilinear interpolation. The two axes are then stacked as channels:
+\begin{equation}
+\mathbf{S}=\mathrm{stack}(\tilde{\mathbf{S}}_1,\tilde{\mathbf{S}}_2)\in\mathbb{R}^{2\times H \times W},
+\end{equation}
+forming the CNN input for each window.
+
+\subsection{Temperature descriptor (6-D) per window}
+From the two temperature channels (bearing and ambient) sliced by the same indices $[s:e]$, we compute a 6-D descriptor:
+\begin{equation}
+\mathbf{h}_t = [\mu_b, \sigma_b, s_b, \mu_a, \sigma_a, s_a]\in\mathbb{R}^{6},
+\end{equation}
+where $\mu$ and $\sigma$ are mean and standard deviation within the 1.0-s window, and $s$ is the least-squares slope over the sample index within the window. Non-finite values are ignored; if a channel contains no finite values, its three descriptors are set to zero.
+
+\subsection{Vibration encoder: lightweight ResNet-18 variant}
+We encode spectrogram inputs with a compact ResNet-18-style 2D CNN configured for two input channels. The stem uses a $7\times7$ convolution with stride 2 and 32 channels, followed by batch normalization, ReLU, and max pooling. Four stages of BasicBlocks follow with channel progression:
+32$\rightarrow$32 (stride 1), 32$\rightarrow$64 (stride 2), 64$\rightarrow$128 (stride 2), and 128$\rightarrow$256 (stride 2). A global average pooling layer produces a 256-D vibration embedding $\mathbf{h}_v\in\mathbb{R}^{256}$.
+
+\subsection{Late fusion classifier}
+Temperature features are projected via a linear layer and ReLU:
+\begin{equation}
+\mathbf{t} = \mathrm{ReLU}(\mathbf{W}_t \mathbf{h}_t + \mathbf{b}_t)\in\mathbb{R}^{32}.
+\end{equation}
+We then concatenate vibration and temperature embeddings and apply a linear classifier:
+\begin{equation}
+\mathbf{u} = [\mathbf{h}_v;\mathbf{t}] \in \mathbb{R}^{288},\quad
+\boldsymbol{\ell} = \mathbf{W}_c \mathbf{u} + \mathbf{b}_c,
+\end{equation}
+where $\boldsymbol{\ell}$ denotes the pre-softmax logits and $\hat{\mathbf{p}}=\mathrm{softmax}(\boldsymbol{\ell})$.
+No dropout is used in the fusion head in the current configuration.
+
+\subsection{File-wise inference via mean \emph{pre-softmax} logit aggregation}
+\label{sec:filewise}
+
+Window-level training uses mini-batches with $\mathbf{S}\in\mathbb{R}^{B\times2\times H\times W}$ and $\mathbf{h}_t\in\mathbb{R}^{B\times6}$. 
+For file-wise evaluation, we forward all windows belonging to the same file and collect their \emph{pre-softmax} logit vectors $\{\boldsymbol{\ell}_i\}_{i=1}^{n}$, where $\boldsymbol{\ell}_i\in\mathbb{R}^{C}$ and $C$ is the number of classes. 
+We aggregate window-level evidence by averaging logits and then predicting the file label by $\arg\max$:
+\begin{equation}
+\bar{\boldsymbol{\ell}} = \frac{1}{n}\sum_{i=1}^{n}\boldsymbol{\ell}_i,\quad
+\hat{y}_{\text{file}}=\arg\max_{c \in \{1,\dots,C\}} \bar{\ell}_c.
+\end{equation}
+Averaging \emph{pre-softmax} logits (rather than probabilities) yields a simple and stable file-level decision rule and is used consistently in our evaluation pipeline.
+\paragraph{Implementation provenance.}
+
+Parts of our implementation were adapted and refactored from an open-source repository for CNN-based bearing diagnosis~\cite{mdzalfirdausi_paderborn_repo}. We substantially modified the pipeline to support run-to-failure windowing, two-axis STFT spectrogram construction with per-window and per-frequency normalization, temperature-feature fusion, and leakage-aware TTF-aligned temporal fine-tuning and evaluation.
+\subsection{Two-phase training: stratified learning and temporal fine-tuning}
+We train in two phases. First, we learn a baseline model using file-wise stratified splitting for development validation. Second, we perform leakage-aware temporal fine-tuning aligned with the TTF axis (train [0,60]\%, val [60,70]\%, test [70,100.1]\%). This temporal protocol mitigates optimistic bias caused by overlapped-window leakage and better reflects deployment, where future (later-life) data are unseen during training.
+\paragraph{Practical temporal fine-tuning details.}
+We initialize temporal fine-tuning from the best stratified checkpoint (\texttt{init\_from}). We enable balanced sampling, cap validation cost with \texttt{val\_max\_windows}=50, and fine-tune with AdamW (lr $3\times10^{-5}$, weight decay $10^{-2}$) under a cosine schedule (OneCycle disabled) with AMP enabled.
+\subsection{Computational complexity and runtime}
+\label{sec:complexity}
+
+Our model is designed to be lightweight. The vibration branch uses a compact ResNet-18 variant with reduced channel widths (32--256) and global average pooling, while the temperature branch is a single linear projection (6$\rightarrow$32) followed by a linear classifier on the fused 288-D vector. Thus, the additional cost of temperature fusion is negligible compared to the CNN forward pass.
+
+The dominant computation comes from (i) STFT feature construction and (ii) the 2D CNN encoder. STFT is computed once per 1.0-s window with fixed parameters ($n\_{fft}=4096$, $hop=1024$), and the resulting spectrogram is resized to $224\times224$. The CNN then processes a 2-channel input of size $224\times224$, yielding a 256-D embedding. File-wise inference further amortizes window-level noise by averaging logits across windows, requiring only a single pass per window and an $\mathcal{O}(nC)$ aggregation over $n$ windows and $C$ classes.
+
+In practice, this pipeline supports efficient training with AMP and enables fast inference suitable for near-real-time monitoring, as both the fusion head and the file-wise aggregation introduce minimal overhead beyond the CNN backbone.
+
+To reduce evaluation overhead during training and fine-tuning, we cap validation computation by limiting the number of evaluated windows per file (\texttt{val\_max\_windows}=50), which improves iteration speed without changing the inference pipeline.
+
 \section{Dataset and Problem Definition}
 \label{sec:data_problem}
 
@@ -377,148 +520,6 @@ To complete the comparison, we also report present-label metrics on the broader 
 \end{figure}
 
 
-\section{Methodology}
-\label{sec:method}
-
-\subsection{Overview}
-We propose a lightweight multi-modal pipeline for bearing health stage recognition. For each 1.0-s window, we transform two-axis vibration into a 2-channel log-spectrogram image and summarize two-channel temperature into a compact 6-D descriptor. A small ResNet-style CNN encodes vibration patterns, a linear layer embeds temperature features, and a late-fusion classifier predicts the health stage. To bridge development and deployment, we adopt a two-phase workflow: stratified training followed by leakage-aware temporal fine-tuning along the TTF axis. Implementation-wise, our code adapts components from an open-source repository~\cite{mdzalfirdausi_paderborn_repo} and customizes them for TTF-aligned temporal splitting, per-window/per-frequency spectrogram normalization, temperature-fusion at the head, and file-wise mean-logit aggregation.
-
-\subsection{Block Diagram}
-Figure~\ref{fig:block} illustrates the end-to-end data flow from raw inputs to file-wise decisions and where fusion occurs.
-
-\begin{figure}[H]
-  \centering
-  \begin{adjustbox}{max width=\linewidth}
-  \begin{tikzpicture}[
-    node distance=8mm and 8mm,
-    box/.style={draw, rounded corners, align=center, minimum height=7mm, minimum width=18mm, font=\small},
-    arr/.style={-Latex}
-  ]
-    % Top chain (compact)
-    \node[box] (vib) {Vibration\\(x,y)};
-    \node[box, right=of vib] (wstft) {Windowing+STFT\\log + per-freq norm};
-    \node[box, right=of wstft] (spec) {2-ch Spectrogram\\$H\times W$};
-    \node[box, right=of spec] (cnn) {ResNet-2D\\Encoder};
-    \node[box, right=of cnn] (vz) {Vibration emb.\\$\mathbf{h}_v\in\mathbb{R}^{256}$};
-
-    % Temp branch (compact)
-    \node[box, below=12mm of wstft, xshift=0mm] (temp) {Temperature\\(bearing, ambient)};
-    \node[box, right=of temp] (tfeat) {6-D features\\+ Linear(32)};
-    \node[box, right=of tfeat] (tz) {Temp emb.\\$\mathbf{t}\in\mathbb{R}^{32}$};
-
-    % Fusion + classifier + aggregation
-    \node[box, right=16mm of vz] (fuse) {Fusion\\$[\mathbf{h}_v;\mathbf{t}]$};
-    \node[box, right=of fuse] (cls) {Classifier\\(logits)};
-    \node[box, right=of cls] (agg) {File-wise mean\\logits $\to$ Pred.};
-
-    % Arrows top chain
-    \draw[arr] (vib) -- (wstft);
-    \draw[arr] (wstft) -- (spec);
-    \draw[arr] (spec) -- (cnn);
-    \draw[arr] (cnn) -- (vz);
-
-    % Temp arrows
-    \draw[arr] (temp) -- (tfeat);
-    \draw[arr] (tfeat) -- (tz);
-
-    % Fusion arrows
-    \draw[arr] (vz) -- (fuse);
-    % Route temp embedding to fusion from below to avoid crossing blocks
-    \draw[arr] (tz.east) to[out=0,in=270] (fuse.south);
-    \draw[arr] (fuse) -- (cls);
-    \draw[arr] (cls) -- (agg);
-  \end{tikzpicture}
-  \end{adjustbox}
-  \caption{Block diagram of the proposed multi-modal pipeline with late fusion and file-wise mean-logit aggregation.}
-  \label{fig:block}
-\end{figure}
-
-\subsection{Synchronous windowing for vibration and temperature}
-In the current codebase, vibration and temperature are sampled synchronously at 25.6 kHz and stored as four channels per sample (two vibration axes + two temperature channels). We segment the raw sequence into 1.0-s windows with 50\% overlap (hop 0.5 s). For each window with indices $[s:e]$, we slice vibration and temperature using the same indices:
-$\mathbf{x}_v=\mathrm{arr}[s:e,0{:}2]$ and $\mathbf{x}_t=\mathrm{arr}[s:e,2{:}4]$.
-This design avoids any additional timestamp alignment. If temperature were sampled at a different rate, an explicit resampling/alignment step would be required.
-
-\subsection{Waveform sanitization and per-window z-score}
-Before computing time--frequency features, we sanitize each vibration window by replacing NaN/Inf values with zeros. Then we apply per-window, per-channel z-score normalization:
-\begin{equation}
-\mathbf{x}'_{v,k} = \frac{\mathbf{x}_{v,k} - \mu(\mathbf{x}_{v,k})}{\sigma(\mathbf{x}_{v,k})+\epsilon},\quad k\in\{1,2\},
-\end{equation}
-where $\mu(\cdot)$ and $\sigma(\cdot)$ are computed within the 1.0-s window for each axis, and $\epsilon$ is a small constant for numerical stability.
-
-\subsection{STFT magnitude and log-compression}
-Each vibration window is converted to a time--frequency representation using STFT with $n\_{fft}=4096$, $hop\_length=1024$, and a Hann window. The magnitude is log-compressed and normalized as described in Section~\ref{sec:method}, then resized to a fixed $224\times224$ resolution.
-We take magnitude and apply log-compression to reduce dynamic range:
-\begin{equation}
-\mathbf{S}_k = \log\left(1 + \alpha |\mathbf{X}_k|\right),
-\end{equation}
-where $\alpha=1.0$ (i.e., \texttt{torch.log1p(mag * log\_add)} with \texttt{log\_add=1.0}).
-
-\subsection{Per-frequency normalization across time frames}
-To stabilize ``brightness'' variations across frames, we normalize each frequency bin across the time dimension (z-score over frames for each frequency):
-\begin{equation}
-\tilde{\mathbf{S}}_k(f,t)=\frac{\mathbf{S}_k(f,t)-\mu_t(\mathbf{S}_k(f,\cdot))}{\sigma_t(\mathbf{S}_k(f,\cdot))+\epsilon}.
-\end{equation}
-This step is performed independently for each vibration axis.
-
-\subsection{Resize and channel stacking}
-We resize each normalized spectrogram $\tilde{\mathbf{S}}_k$ to the target size $H\times W$ (current configuration: $224\times224$) using bilinear interpolation. The two axes are then stacked as channels:
-\begin{equation}
-\mathbf{S}=\mathrm{stack}(\tilde{\mathbf{S}}_1,\tilde{\mathbf{S}}_2)\in\mathbb{R}^{2\times H \times W},
-\end{equation}
-forming the CNN input for each window.
-
-\subsection{Temperature descriptor (6-D) per window}
-From the two temperature channels (bearing and ambient) sliced by the same indices $[s:e]$, we compute a 6-D descriptor:
-\begin{equation}
-\mathbf{h}_t = [\mu_b, \sigma_b, s_b, \mu_a, \sigma_a, s_a]\in\mathbb{R}^{6},
-\end{equation}
-where $\mu$ and $\sigma$ are mean and standard deviation within the 1.0-s window, and $s$ is the least-squares slope over the sample index within the window. Non-finite values are ignored; if a channel contains no finite values, its three descriptors are set to zero.
-
-\subsection{Vibration encoder: lightweight ResNet-18 variant}
-We encode spectrogram inputs with a compact ResNet-18-style 2D CNN configured for two input channels. The stem uses a $7\times7$ convolution with stride 2 and 32 channels, followed by batch normalization, ReLU, and max pooling. Four stages of BasicBlocks follow with channel progression:
-32$\rightarrow$32 (stride 1), 32$\rightarrow$64 (stride 2), 64$\rightarrow$128 (stride 2), and 128$\rightarrow$256 (stride 2). A global average pooling layer produces a 256-D vibration embedding $\mathbf{h}_v\in\mathbb{R}^{256}$.
-
-\subsection{Late fusion classifier}
-Temperature features are projected via a linear layer and ReLU:
-\begin{equation}
-\mathbf{t} = \mathrm{ReLU}(\mathbf{W}_t \mathbf{h}_t + \mathbf{b}_t)\in\mathbb{R}^{32}.
-\end{equation}
-We then concatenate vibration and temperature embeddings and apply a linear classifier:
-\begin{equation}
-\mathbf{u} = [\mathbf{h}_v;\mathbf{t}] \in \mathbb{R}^{288},\quad
-\boldsymbol{\ell} = \mathbf{W}_c \mathbf{u} + \mathbf{b}_c,
-\end{equation}
-where $\boldsymbol{\ell}$ denotes the pre-softmax logits and $\hat{\mathbf{p}}=\mathrm{softmax}(\boldsymbol{\ell})$.
-No dropout is used in the fusion head in the current configuration.
-
-\subsection{File-wise inference via mean \emph{pre-softmax} logit aggregation}
-\label{sec:filewise}
-
-Window-level training uses mini-batches with $\mathbf{S}\in\mathbb{R}^{B\times2\times H\times W}$ and $\mathbf{h}_t\in\mathbb{R}^{B\times6}$. 
-For file-wise evaluation, we forward all windows belonging to the same file and collect their \emph{pre-softmax} logit vectors $\{\boldsymbol{\ell}_i\}_{i=1}^{n}$, where $\boldsymbol{\ell}_i\in\mathbb{R}^{C}$ and $C$ is the number of classes. 
-We aggregate window-level evidence by averaging logits and then predicting the file label by $\arg\max$:
-\begin{equation}
-\bar{\boldsymbol{\ell}} = \frac{1}{n}\sum_{i=1}^{n}\boldsymbol{\ell}_i,\quad
-\hat{y}_{\text{file}}=\arg\max_{c \in \{1,\dots,C\}} \bar{\ell}_c.
-\end{equation}
-Averaging \emph{pre-softmax} logits (rather than probabilities) yields a simple and stable file-level decision rule and is used consistently in our evaluation pipeline.
-\paragraph{Implementation provenance.}
-
-Parts of our implementation were adapted and refactored from an open-source repository for CNN-based bearing diagnosis~\cite{mdzalfirdausi_paderborn_repo}. We substantially modified the pipeline to support run-to-failure windowing, two-axis STFT spectrogram construction with per-window and per-frequency normalization, temperature-feature fusion, and leakage-aware TTF-aligned temporal fine-tuning and evaluation.
-\subsection{Two-phase training: stratified learning and temporal fine-tuning}
-We train in two phases. First, we learn a baseline model using file-wise stratified splitting for development validation. Second, we perform leakage-aware temporal fine-tuning aligned with the TTF axis (train [0,60]\%, val [60,70]\%, test [70,100.1]\%). This temporal protocol mitigates optimistic bias caused by overlapped-window leakage and better reflects deployment, where future (later-life) data are unseen during training.
-\paragraph{Practical temporal fine-tuning details.}
-We initialize temporal fine-tuning from the best stratified checkpoint (\texttt{init\_from}). We enable balanced sampling, cap validation cost with \texttt{val\_max\_windows}=50, and fine-tune with AdamW (lr $3\times10^{-5}$, weight decay $10^{-2}$) under a cosine schedule (OneCycle disabled) with AMP enabled.
-\subsection{Computational complexity and runtime}
-\label{sec:complexity}
-
-Our model is designed to be lightweight. The vibration branch uses a compact ResNet-18 variant with reduced channel widths (32--256) and global average pooling, while the temperature branch is a single linear projection (6$\rightarrow$32) followed by a linear classifier on the fused 288-D vector. Thus, the additional cost of temperature fusion is negligible compared to the CNN forward pass.
-
-The dominant computation comes from (i) STFT feature construction and (ii) the 2D CNN encoder. STFT is computed once per 1.0-s window with fixed parameters ($n\_{fft}=4096$, $hop=1024$), and the resulting spectrogram is resized to $224\times224$. The CNN then processes a 2-channel input of size $224\times224$, yielding a 256-D embedding. File-wise inference further amortizes window-level noise by averaging logits across windows, requiring only a single pass per window and an $\mathcal{O}(nC)$ aggregation over $n$ windows and $C$ classes.
-
-In practice, this pipeline supports efficient training with AMP and enables fast inference suitable for near-real-time monitoring, as both the fusion head and the file-wise aggregation introduce minimal overhead beyond the CNN backbone.
-
-To reduce evaluation overhead during training and fine-tuning, we cap validation computation by limiting the number of evaluated windows per file (\texttt{val\_max\_windows}=50), which improves iteration speed without changing the inference pipeline.
 \section{Discussion and Threats to Validity}
 \label{sec:discussion}
 

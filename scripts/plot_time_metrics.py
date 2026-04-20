@@ -13,7 +13,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from datasets.logs_ttf import LogsTTFDataset
 from features.spectrogram import SpectrogramTransform
-from features.temp_features import temp_stats_window
+from features.temp_features import resolve_temp_feature
 from models.resnet2d import ResNet18Small
 
 try:
@@ -29,7 +29,13 @@ def load_cfg(path: str) -> dict:
 
 
 def load_model(cfg: dict, ckpt_path: str, device):
-    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=6)
+    model_cfg = cfg.get("model", {}) or {}
+    use_temp = bool(model_cfg.get("use_temp", True))
+    temp_feat_dim = 0
+    if use_temp:
+        temp_cfg = model_cfg.get("temp_feature", {}) or {}
+        _, temp_feat_dim = resolve_temp_feature(temp_cfg.get("type", "stats6"))
+    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=temp_feat_dim)
     state = torch.load(ckpt_path, map_location=device, weights_only=True)
     sd = state["model"] if isinstance(state, dict) and "model" in state else state
     model.load_state_dict(sd)
@@ -129,6 +135,19 @@ def main():
     split_mode = cfg.get("split_mode", "temporal")
     ttf_cfg = cfg.get("temporal_ttf", {"train": [0.0, 70.0], "val": [70.0, 80.0], "test": [80.0, 100.1]})
 
+    model_cfg = cfg.get("model", {}) or {}
+    use_temp = bool(model_cfg.get("use_temp", True))
+    temp_feat_fn = None
+    temp_feat_dim = 0
+    temp_ctx_seconds = None
+    temp_ctx_causal = True
+    if use_temp:
+        temp_cfg = model_cfg.get("temp_feature", {}) or {}
+        temp_feat_fn, temp_feat_dim = resolve_temp_feature(temp_cfg.get("type", "stats6"))
+        temp_ctx_seconds = temp_cfg.get("context_seconds")
+        temp_ctx_seconds = float(temp_ctx_seconds) if temp_ctx_seconds is not None else None
+        temp_ctx_causal = bool(temp_cfg.get("causal", True))
+
     def make_ds(split, ttf_split):
         return LogsTTFDataset(
             cfg["data_dir"], cfg["manifest"], split=split,
@@ -142,7 +161,10 @@ def main():
             test_ratio=cfg.get("stratified", {}).get("test", 0.2),
             random_seed=cfg.get("random_seed", cfg["train"]["seed"]),
             transform=te_spec,
-            temp_feature_fn=temp_stats_window,
+            temp_feature_fn=temp_feat_fn,
+            temp_feat_dim=temp_feat_dim,
+            temp_context_seconds=temp_ctx_seconds,
+            temp_context_causal=temp_ctx_causal,
             exclude_list=cfg.get("exclude_list"),
             limit_files=None,
             seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
