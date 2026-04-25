@@ -9,6 +9,7 @@ venv/
 .env
 .idea/
 .vscode/
+.claude/
 
 # OS junk
 .DS_Store
@@ -61,6 +62,7 @@ data/*
 *.bak
 *.backup
 *.orig
+*.old
 
 # LaTeX minted cache
 _minted-*/

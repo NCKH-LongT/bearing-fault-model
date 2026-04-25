@@ -21,6 +21,7 @@ Data & Manifest
 - Input CSV per file: columns `[vib_x, vib_y, temp_bearing, temp_atm]` sampled at 25.6 kHz.
 - `data/manifest.csv` columns: `file, run_id, ttf_percent, fault_type` (labels: healthy/degrading/fault).
 - Windowing: `window_seconds=1.0`, `hop_seconds=0.5` (synchronous slices for vibration and temperature).
+- Raw dataset note: `data/` contains about 130 CSV files (~17 GB total). If you want the full dataset available after cloning on another machine, use Git LFS and run `git lfs pull` after clone.
 
 Setup
 - Python 3.10+, PyTorch >= 2.0 recommended.
@@ -39,7 +40,14 @@ Key Settings (see configs)
 - STFT: `n_fft=4096`, `hop_length=1024`, `window='hann'`, `log_add=1.0`.
 - Image size: `input_size=[224,224]` (or `[160,160]` for lighter runs).
 - Optimizer: AdamW; label smoothing; AMP; balanced sampling; early stopping.
-- Temporal split: train `[0,60]`, val `[60,70]`, test `[70,100.1]` (TTF percent).
+- Temporal split: train `[0,60]`, val `[60,70]`, test `[70,100]` (TTF percent).
+
+Clone To Another Machine
+1) Install Git LFS: `git lfs install`
+2) Clone the repository normally.
+3) If LFS-tracked dataset files are present in the remote, fetch them with `git lfs pull`.
+4) Create your local Python environment separately; `.venv/` is intentionally not versioned.
+5) If you decide to version the raw dataset in this repo, track it with Git LFS and add it explicitly, e.g. `git add -f data/*.csv`.
 
 Reproducing Paper Figures
 - Run training/eval as above; generated artifacts under `runs/.../eval`.
