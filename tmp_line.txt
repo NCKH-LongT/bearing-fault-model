@@ -1,1 +1,0 @@
-python scripts/auto_train_eval.py --config configs/logs_stft_full_temporal.yaml --max_rounds 5 --resume_from_prev --continue

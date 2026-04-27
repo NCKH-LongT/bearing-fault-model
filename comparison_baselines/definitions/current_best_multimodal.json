@@ -10,22 +10,22 @@
   },
   "protocols": {
     "stratified": {
-      "config": "runs/logs_stft_strat/auto_r22/config.yaml",
+      "config": "configs/best_stratified_ref.yaml",
       "ckpt": "runs/logs_stft_strat/auto_r22/best.pt",
       "primary_report": "runs/logs_stft_strat/auto_r22/eval/report.txt",
-      "notes": "Best stratified checkpoint from auto-training round 22 (2048/512, 160x160). Macro-F1=0.7762. DO NOT use runs/logs_stft_strat/best.pt — that is a different, weaker run (4096/1024, 224x224, trained from scratch)."
+      "notes": "Checkpoint stratified chuẩn đang dùng cho paper: auto-training round 22 (2048/512, 160x160). Macro-F1=0.7762. Chỉ dùng để cite/khởi tạo temporal; không thay bằng runs/logs_stft_strat/best.pt."
     },
     "temporal": {
-      "config": "configs/logs_stft_full_temporal_gating.yaml",
-      "ckpt": "runs/logs_stft_temporal_gating_final/best.pt",
-      "primary_report": "runs/logs_stft_temporal_gating_final/eval/report.txt",
-      "notes": "Current best temporal multi-modal baseline. Initialized from auto_r22/best.pt."
+      "config": "configs/best_temporal.yaml",
+      "ckpt": "runs/paper_sync/temporal/best.pt",
+      "primary_report": "runs/paper_sync/temporal/eval/report.txt",
+      "notes": "Run temporal chuẩn hiện tại cho paper. Khởi tạo từ auto_r22/best.pt và cho Accuracy=0.8974 trên lát [70,100]%."
     },
     "fullrange": {
-      "config": "configs/logs_stft_full_temporal_gating_alltest.yaml",
-      "ckpt": "runs/logs_stft_temporal_gating_fullrange/best.pt",
-      "primary_report": "runs/logs_stft_temporal_gating_fullrange/eval/report.txt",
-      "notes": "Full lifecycle evaluation for overall-file comparison; can also be evaluated with vote aggregation."
+      "config": "configs/best_fullrange_eval.yaml",
+      "ckpt": "runs/paper_sync/temporal/best.pt",
+      "primary_report": "runs/paper_sync/fullrange/eval_vote/report.txt",
+      "notes": "Đánh giá full-range chuẩn của paper. Dùng checkpoint temporal chuẩn và nên chạy eval với vote để lấy số headline toàn vòng đời."
     }
   },
   "artifacts": [

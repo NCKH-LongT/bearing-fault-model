@@ -110,6 +110,6 @@ def main(cfg_path: str, override: list = None):
 
 
 if __name__ == "__main__":
-    cfg = sys.argv[1] if len(sys.argv) > 1 else "configs/logs_stft_full_temporal.yaml"
+    cfg = sys.argv[1] if len(sys.argv) > 1 else "configs/best_temporal.yaml"
     override = sys.argv[2:8] if len(sys.argv) >= 8 else None
     sys.exit(main(cfg, override))

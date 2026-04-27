@@ -131,8 +131,9 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
     print(f"Test set report (file-wise, {agg}-agg):")
     ys, ps = evaluate_filewise(test_ds, model, device, batch_size=cfg["train"]["batch_size"], agg=agg)
 
-    # Prepare output directory
-    out_dir = os.path.join(cfg["log"]["out_dir"], "eval")
+    # Keep mean-agg in the legacy eval directory; store alternatives separately.
+    eval_dir_name = "eval" if agg == "mean" else f"eval_{agg}"
+    out_dir = os.path.join(cfg["log"]["out_dir"], eval_dir_name)
     os.makedirs(out_dir, exist_ok=True)
 
     # Save textual report and confusion matrix values
@@ -156,7 +157,9 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
 
     # Additionally, keep a present-labels-only report for reference
     try:
-        labels_present = sorted(set(ys) | set(ps))
+        # Present-class reporting should reflect classes that truly appear
+        # in the evaluated slice, not labels introduced only by predictions.
+        labels_present = sorted(set(ys))
         if labels_present:
             names_present = [cls_names[i] for i in labels_present]
             report_present = classification_report(
@@ -213,7 +216,7 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
 
             # Additionally, plot present-classes-only F1 (omit absent classes)
             try:
-                labels_present = sorted(set(ys) | set(ps))
+                labels_present = sorted(set(ys))
                 if labels_present:
                     names_present = [cls_names[i] for i in labels_present]
                     f1_present = f1_score(ys, ps, average=None, labels=labels_present, zero_division=0)
@@ -242,7 +245,7 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         ys_a, ps_a = [y for (y, t) in zip(ys, ttfs) if 70.0 <= t <= 90.0], [p for (p, t) in zip(ps, ttfs) if 70.0 <= t <= 90.0]
         ys_b, ps_b = [y for (y, t) in zip(ys, ttfs) if 90.0 < t <= 100.1], [p for (p, t) in zip(ps, ttfs) if 90.0 < t <= 100.1]
         if ys_a:
-            labels_present_a = sorted(set(ys_a) | set(ps_a))
+            labels_present_a = sorted(set(ys_a))
             names_present_a = [cls_names[i] for i in labels_present_a]
             rep_a = classification_report(ys_a, ps_a, labels=labels_present_a, target_names=names_present_a, digits=4, zero_division=0)
             with open(os.path.join(out_dir, "report_early_70_90.txt"), "w", encoding="utf-8") as f:
@@ -272,7 +275,7 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
                 except Exception:
                     pass
         if ys_b:
-            labels_present_b = sorted(set(ys_b) | set(ps_b))
+            labels_present_b = sorted(set(ys_b))
             names_present_b = [cls_names[i] for i in labels_present_b]
             rep_b = classification_report(ys_b, ps_b, labels=labels_present_b, target_names=names_present_b, digits=4, zero_division=0)
             with open(os.path.join(out_dir, "report_late_90_100.txt"), "w", encoding="utf-8") as f:

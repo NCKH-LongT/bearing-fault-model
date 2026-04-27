@@ -16,11 +16,45 @@ from features.temp_features import resolve_temp_feature
 from models.resnet2d import ResNet18Small
 
 
+GLOBAL_WORKER_SEED = 42
+
+
 def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def configure_determinism(seed: int, deterministic: bool):
+    set_seed(seed)
+    if deterministic:
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    if torch.cuda.is_available():
+        if deterministic:
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+        else:
+            torch.backends.cudnn.benchmark = True
+    try:
+        torch.use_deterministic_algorithms(bool(deterministic), warn_only=True)
+    except Exception:
+        pass
+
+
+def make_loader_seeders(seed: int):
+    global GLOBAL_WORKER_SEED
+    GLOBAL_WORKER_SEED = int(seed)
+    generator = torch.Generator()
+    generator.manual_seed(int(seed))
+    return generator
+
+
+def seed_worker(worker_id: int):
+    worker_seed = int(GLOBAL_WORKER_SEED) + int(worker_id)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
 
 
 def compute_class_weights(manifest_path: str, mapping: dict) -> torch.Tensor:
@@ -103,12 +137,14 @@ def main(cfg_path: str):
         cfg = yaml.safe_load(f)
 
     os.makedirs(cfg["log"]["out_dir"], exist_ok=True)
-    set_seed(cfg["train"]["seed"])
+    deterministic = bool(cfg["train"].get("deterministic", False))
+    configure_determinism(cfg["train"]["seed"], deterministic)
+    with open(os.path.join(cfg["log"]["out_dir"], "config.yaml"), "w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type == "cuda":
         try:
-            torch.backends.cudnn.benchmark = True
             gpu_name = torch.cuda.get_device_name(0)
             print(f"Using GPU: {gpu_name}")
         except Exception:
@@ -206,11 +242,14 @@ def main(cfg_path: str):
     )
 
     pin_mem = torch.cuda.is_available()
+    loader_generator = make_loader_seeders(cfg["train"]["seed"])
     # DataLoader with persistent workers and prefetch for speed
     dl_common = {
         "batch_size": cfg["train"]["batch_size"],
         "num_workers": cfg["train"]["num_workers"],
         "pin_memory": pin_mem,
+        "worker_init_fn": seed_worker,
+        "generator": loader_generator,
     }
     if cfg["train"]["num_workers"] > 0:
         dl_common["persistent_workers"] = True
@@ -225,7 +264,12 @@ def main(cfg_path: str):
         inv = {k: (sum(cnt.values()) / max(1, v)) for k, v in cnt.items()}
         weights = [inv[it["label"]] for it in train_ds.items]
         weights = torch.tensor(weights, dtype=torch.double)
-        sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+        sampler = WeightedRandomSampler(
+            weights,
+            num_samples=len(weights),
+            replacement=True,
+            generator=loader_generator,
+        )
 
     train_loader = DataLoader(
         train_ds,

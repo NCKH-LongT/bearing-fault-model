@@ -119,7 +119,7 @@ def class_hist_over_bins(results: List[Dict], edges: List[float], labels: List[i
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/logs_stft_full_temporal.yaml")
+    ap.add_argument("--config", default="configs/best_temporal.yaml")
     ap.add_argument("--ckpt", default="runs/logs_stft/best.pt")
     ap.add_argument("--bins", default="0,70,80,90,95,97.5,100.1", help="Comma-separated TTF bin edges")
     ap.add_argument("--show", action="store_true", help="Display plots on screen")

@@ -1,4 +1,0 @@
-\end{document}
-\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}% Springer Nature LaTeX template
-
-\usepackage{amsmath,amssymb}

@@ -1,0 +1,66 @@
+# Config tham chiếu cho run stratified tốt nhất đang được dùng trong paper.
+# Đây là snapshot bám đúng run `runs/logs_stft_strat/auto_r22`.
+#
+# Lưu ý quan trọng:
+# - File này không phải cấu hình "train lại từ đầu" theo cách độc lập.
+# - Run auto_r22 được tạo trong chuỗi auto-training và khởi tạo từ `auto_r21`.
+# - Vì vậy, hãy dùng file này làm chuẩn để viết paper/cite kết quả,
+#   không dùng nó như cấu hình mặc định để mong tái tạo lại từ đầu.
+
+data_dir: data
+manifest: data/manifest.csv
+exclude_list: null
+
+sampling_rate: 25600
+window_seconds: 1.0
+hop_seconds: 0.5
+
+split_mode: stratified
+stratified:
+  train: 0.6
+  val: 0.2
+  test: 0.2
+  min_per_class_val: 5
+  min_per_class_test: 5
+random_seed: 42
+
+stft:
+  n_fft: 2048
+  hop_length: 512
+  window: hann
+  log_add: 1.0
+
+input_size: [160, 160]
+num_classes: 3
+
+train:
+  batch_size: 24
+  epochs: 80
+  lr: 2.0e-4
+  weight_decay: 1.0e-3
+  num_workers: 4
+  seed: 42
+  early_stop_patience: 20
+  early_stop: true
+  prefetch_factor: 2
+  eval_every: 1
+  val_max_windows: 0
+  use_class_weights: false
+  use_amp: true
+  label_smoothing: 0.05
+  balanced_sampling: true
+  init_from: runs/logs_stft_strat/auto_r21/best.pt
+
+optim:
+  use_onecycle: false
+  pct_start: 0.3
+
+log:
+  out_dir: runs/logs_stft_strat/auto_r22
+  save_best_by: macro_f1
+
+debug:
+  limit_files_train: null
+  limit_files_val: null
+  limit_files_test: null
+  seconds_cap: null

@@ -1,5 +1,8 @@
 # Cách chạy 3 baseline để lấy số liệu so sánh
 
+> Ghi chú: đây là tài liệu dài mang tính lịch sử.
+> Nếu chỉ cần bộ lệnh chuẩn đang dùng cho paper hiện tại, ưu tiên đọc `docs/CANONICAL_RUN_AND_CLASSIC_COMPARE.md` và `comparison_baselines/README.md`.
+
 Tài liệu này ghi lại cách chạy 3 baseline chuẩn hiện tại của repo để lấy số liệu so sánh cho model mới:
 
 1. `svm_vib8`
@@ -69,7 +72,7 @@ python scripts/run_comparison_baseline.py --baseline svm_vib8 --protocol tempora
 ### File kết quả chính
 
 - `runs/classical/svm_vib8_stratified/report_test.txt`
-- `runs/classical/svm_vib8_temporal/report_test.txt`
+- `runs/classical/svm_vib8_strat_train_temporal_eval/report_test.txt`
 
 Artifact thường có:
 
@@ -95,7 +98,7 @@ python scripts/run_comparison_baseline.py --baseline vibration_only_cnn --protoc
 ### File kết quả chính
 
 - `runs/ablations/strat_vib_only/eval/report.txt`
-- `runs/ablations/temporal_vib_only/eval/report.txt`
+- `runs/ablations/temporal_vib_only_fair/eval/report.txt`
 
 Artifact thường có:
 
@@ -133,9 +136,9 @@ python scripts/run_comparison_baseline.py --baseline current_best_multimodal --p
 
 ### File kết quả chính
 
-- `runs/logs_stft_strat/eval/report.txt`
-- `runs/logs_stft_temporal_gating_final/eval/report.txt`
-- `runs/logs_stft_temporal_gating_fullrange/eval/report.txt`
+- `runs/logs_stft_strat/auto_r22/eval/report.txt`
+- `runs/paper_sync/temporal/eval/report.txt`
+- `runs/paper_sync/fullrange/eval_vote/report.txt`
 
 ## 6. Bộ lệnh tối thiểu để có bảng so sánh chính
 
@@ -165,14 +168,14 @@ python scripts/run_comparison_baseline.py --baseline current_best_multimodal --p
 
 - Classical:
   - `runs/classical/svm_vib8_stratified/report_test.txt`
-  - `runs/classical/svm_vib8_temporal/report_test.txt`
+  - `runs/classical/svm_vib8_strat_train_temporal_eval/report_test.txt`
 - Deep vibration-only:
   - `runs/ablations/strat_vib_only/eval/report.txt`
-  - `runs/ablations/temporal_vib_only/eval/report.txt`
+  - `runs/ablations/temporal_vib_only_fair/eval/report.txt`
 - Current best multi-modal:
-  - `runs/logs_stft_strat/eval/report.txt`
-  - `runs/logs_stft_temporal_gating_final/eval/report.txt`
-  - `runs/logs_stft_temporal_gating_fullrange/eval/report.txt`
+  - `runs/logs_stft_strat/auto_r22/eval/report.txt`
+  - `runs/paper_sync/temporal/eval/report.txt`
+  - `runs/paper_sync/fullrange/eval_vote/report.txt`
 
 Các số thường cần lấy:
 
@@ -194,7 +197,7 @@ Bạn vẫn có thể chạy trực tiếp từ config gốc.
 
 ```powershell
 python classical_baselines/train_classical.py --config classical_baselines/configs/svm_vib8_stratified.yaml
-python classical_baselines/train_classical.py --config classical_baselines/configs/svm_vib8_temporal.yaml
+python classical_baselines/train_classical.py --config classical_baselines/configs/svm_vib8_strat_train_temporal_eval.yaml
 ```
 
 ### Vibration-only CNN
@@ -203,18 +206,18 @@ python classical_baselines/train_classical.py --config classical_baselines/confi
 python train_logs.py --config configs/ablation/logs_stft_train_strat_vib.yaml
 python eval_logs.py --config configs/ablation/logs_stft_train_strat_vib.yaml --ckpt runs/ablations/strat_vib_only/best.pt
 
-python train_logs.py --config configs/ablation/logs_stft_temporal_vib_ft.yaml
-python eval_logs.py --config configs/ablation/logs_stft_temporal_vib_ft.yaml --ckpt runs/ablations/temporal_vib_only/best.pt
+python train_logs.py --config configs/ablation/logs_stft_temporal_vib_ft_fair.yaml
+python eval_logs.py --config configs/ablation/logs_stft_temporal_vib_ft_fair.yaml --ckpt runs/ablations/temporal_vib_only_fair/best.pt
 ```
 
 ### Current best multi-modal
 
 ```powershell
-python train_logs.py --config configs/logs_stft_train_strat.yaml
-python eval_logs.py --config configs/logs_stft_train_strat.yaml --ckpt runs/logs_stft_strat/best.pt
+python eval_logs.py --config configs/best_stratified_ref.yaml --ckpt runs/logs_stft_strat/auto_r22/best.pt
 
-python train_logs.py --config configs/logs_stft_full_temporal_gating.yaml
-python eval_logs.py --config configs/logs_stft_full_temporal_gating.yaml --ckpt runs/logs_stft_temporal_gating_final/best.pt
+python train_logs.py --config configs/best_temporal.yaml
+python eval_logs.py --config configs/best_temporal.yaml --ckpt runs/paper_sync/temporal/best.pt
+python eval_logs.py --config configs/best_fullrange_eval.yaml --ckpt runs/paper_sync/temporal/best.pt --agg vote
 ```
 
 ## 9. Kết luận ngắn

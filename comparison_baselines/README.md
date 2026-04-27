@@ -18,6 +18,12 @@ Ba baseline chuẩn hiện tại:
 3. `current_best_multimodal`
    Baseline mạnh hiện tại của repo, dùng vibration + temperature.
 
+Từ thời điểm này, baseline `current_best_multimodal` được neo theo bộ config chuẩn của paper:
+
+- `configs/best_stratified_ref.yaml`
+- `configs/best_temporal.yaml`
+- `configs/best_fullrange_eval.yaml`
+
 ## Cấu trúc
 
 - `definitions/`
@@ -65,3 +71,7 @@ Registry này chỉ là lớp điều phối. Tính khách quan của so sánh v
 - cùng đơn vị đánh giá file-wise
 
 Feature/model family có thể khác nhau, nhưng protocol đánh giá phải đồng nhất.
+
+Để xem hướng dẫn gọn chỉ giữ bộ run chuẩn của paper và cách chạy baseline classic, đọc thêm:
+
+- `docs/CANONICAL_RUN_AND_CLASSIC_COMPARE.md`
