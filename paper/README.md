@@ -179,7 +179,9 @@ Với một run duy nhất, claim phải giới hạn ở within-run file-level 
 
 Classical P2 winner robustness/efficiency đã được đo trên validation, không mở locked test. Noise rung 20/10 dB không làm giảm Macro-F1 trên validation bão hòa, nhưng mất vibration X làm giảm `0.4946`, mất temperature giảm `0.4470`, và temperature drift +2°C giảm `0.4367`; mất vibration Y không làm thay đổi kết quả. Điều này cho thấy phụ thuộc bất đối xứng vào trục X và độ nhạy lớn với temperature availability/calibration. CPU feature extraction `2.458 ms/window`, RF inference `0.0363 ms/window`; ước lượng `79.82 ms/file` cho 32 window, chưa tính I/O. Model khoảng `2253.4 KiB`, 200 cây và 25.328 nodes. Artifact: `revision_artifacts/classical_robustness_efficiency/summary.md`.
 
-Đây là exploratory validation robustness, không phải locked-test robustness. Deep-model latency/memory và robustness vẫn cần đo riêng trước khi hoàn thiện bảng paper.
+Deep normalized multimodal robustness đã được đo qua năm seed trên cùng validation. Noise raw-signal 20/10 dB làm Macro-F1 giảm `0.9310` xuống `0.0690`; mất vibration X/Y làm giảm `0.8054/0.6494`. Mất temperature hoặc drift +2°C không làm thay đổi validation score, cho thấy deep model gần như bỏ qua temperature ở inference dù nhánh này có gradient. Seed 42 có 2.798.403 tham số, checkpoint `10.73 MiB`, CPU STFT+temperature `7.177 ms/window`, GPU forward `0.034 ms/window`, ước lượng `230.74 ms/file` cho 32 window và peak CUDA allocation `97.96 MiB`. Artifact: `revision_artifacts/deep_robustness_efficiency/summary.md`.
+
+Đây là exploratory validation robustness, không phải locked-test robustness. Hai model có failure mode trái ngược: classical fusion chịu noise nhưng nhạy temperature/mất X; deep model nhạy cực mạnh với noise/mất axis và gần như không dùng temperature. Không tune tiếp theo các kết quả perturbation này trên cùng validation.
 
 Chỉ cập nhật `main.tex` sau khi bảng artifact mới có nguồn truy vết và protocol audit đi kèm.
 

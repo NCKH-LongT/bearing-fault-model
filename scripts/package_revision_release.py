@@ -162,6 +162,10 @@ def main() -> int:
         for filename in ("summary.md", "results.json"):
             copy_required(classical_robustness / filename, package_root / "classical_robustness_efficiency" / filename)
 
+        deep_robustness = ROOT / "paper/revision_artifacts/deep_robustness_efficiency"
+        for filename in ("summary.md", "results.json"):
+            copy_required(deep_robustness / filename, package_root / "deep_robustness_efficiency" / filename)
+
         files = sorted(path for path in package_root.rglob("*") if path.is_file())
         manifest = {
             "artifact_set": "bearing-revision-v2",

@@ -1,13 +1,13 @@
 # Checklist chạy revision bài báo
 
-Cập nhật gần nhất: **2026-08-05 23:17 ICT**.
+Cập nhật gần nhất: **2026-08-05 23:24 ICT**.
 
 File này là nhật ký vận hành và checklist resume cho quy trình revision. Kết quả chính phải đến từ held-out multi-class test ở cấp file. Hyperparameter chỉ được chọn bằng validation Macro-F1; không mở test trong lúc search.
 
 ## Trạng thái nhanh
 
 - Queue v2: **đã hoàn thành**.
-- Công việc hiện tại: classical validation robustness/efficiency đã hoàn thành; bước tiếp theo là deep-model robustness/latency/memory rồi sửa paper, hoặc bổ sung run/bearing mới.
+- Công việc hiện tại: robustness/efficiency evidence đã hoàn thành; bước tiếp theo là sửa `paper/main.tex`, hạ claim về within-run và biên dịch PDF.
 - Search v1: hoàn thành 24/24 multimodal và 16/16 vibration-only, giữ lại làm audit trail nhưng không dùng cho confirmation vì có 23 cảnh báo scheduler/optimizer.
 - Multimodal v2 đã hoàn thành: `24/24` trial và confirmation đủ 5 seed.
 - Vibration-only v2 đã hoàn thành: `16/16` trial và confirmation đủ 5 seed.
@@ -183,9 +183,9 @@ sed -n '1,40p' runs/revision/svm_vib8_stratified/report_test.txt
 - [x] So sánh handcrafted vibration 26-D với vibration+temperature 32-D trên cùng folds.
 - [x] Chạy temperature-only 6-D file-CV và file-grouped modality permutation/TTF-correlation audit.
 - [x] Đo validation robustness và CPU efficiency cho classical P2 winner.
-- [ ] Bổ sung efficiency: params, model size, STFT/model/end-to-end latency, throughput và memory.
-- [ ] Bổ sung robustness: vibration noise, temperature missing/drift và mất một vibration axis.
-- [ ] Nếu không có thêm run/bearing, hạ claim về within-run file-level classification.
+- [x] Bổ sung efficiency: params, model size, STFT/model/end-to-end latency, throughput và memory.
+- [x] Bổ sung robustness: vibration noise, temperature missing/drift và mất một vibration axis.
+- [x] Nếu không có thêm run/bearing, hạ claim kế hoạch về within-run file-level classification; cần áp dụng vào `main.tex` ở Bước 6.
 
 Kết quả held-out test hiện tại:
 
@@ -206,7 +206,8 @@ Diễn giải và quyết định:
 - Feature/algorithm winner là SVM vibration 26-D `C=0.1`, `gamma=0.1`, CV Macro-F1 `0.8416 ± 0.0914`; bộ 8-D tốt nhất đạt `0.8157 ± 0.1576`. Logistic Regression 26-D tốt nhất đạt `0.8295 ± 0.1597`, Random Forest tốt nhất `0.7904 ± 0.1740`. Global CV winner được đánh giá validation đúng một lần và đạt 1.0000; không xem đây là test evidence.
 - Khi thêm temperature stats 6-D, Random Forest 32-D trở thành global winner: CV Macro-F1 `0.9634 ± 0.0337`, tăng `0.1218` so với vibration 26-D winner và fold thấp nhất `0.9348`. Validation đạt 1.0000 nhưng không phải test evidence. Vì chỉ có `run1`, cần kiểm tra temperature có đang proxy cho TTF hay không.
 - Temperature-only Random Forest đạt CV Macro-F1 `0.8954 ± 0.0694`. Permutation vibration/temperature làm fusion Macro-F1 giảm lần lượt `0.3101/0.3489`, nên cả hai modality đều đóng góp trong run1. Bearing mean/std/slope có Spearman rho với TTF `0.8714/0.7988/0.7390`, xác nhận nguy cơ trajectory proxy; không claim cross-run.
-- Classical robustness: noise 20/10 dB giữ Macro-F1 1.0000 trên validation bão hòa; mất vibration X, mất temperature và drift +2°C làm giảm lần lượt `0.4946/0.4470/0.4367`; mất vibration Y không đổi. Feature/RF latency CPU `2.458/0.0363 ms/window`, khoảng `79.82 ms/file` cho 32 window, model `2253.4 KiB`. Deep robustness/latency/memory vẫn chưa hoàn thành.
+- Classical robustness: noise 20/10 dB giữ Macro-F1 1.0000 trên validation bão hòa; mất vibration X, mất temperature và drift +2°C làm giảm lần lượt `0.4946/0.4470/0.4367`; mất vibration Y không đổi. Feature/RF latency CPU `2.458/0.0363 ms/window`, khoảng `79.82 ms/file` cho 32 window, model `2253.4 KiB`.
+- Deep five-seed robustness: noise raw 20/10 dB làm Macro-F1 giảm `0.9310`; mất vibration X/Y giảm `0.8054/0.6494`; mất temperature/drift +2°C không đổi. Model có 2.798.403 params, checkpoint `10.73 MiB`; preprocessing `7.177 ms/window`, GPU forward `0.034 ms/window`, khoảng `230.74 ms/file`, peak CUDA `97.96 MiB`.
 - SVM hiện là model mạnh nhất trên test này; Macro-F1 cao hơn multimodal trung bình 0.3137 và vibration-only trung bình 0.4367.
 - Multimodal tốt hơn vibration-only trung bình nhưng cả hai deep model rất không ổn định qua seed và có hiện tượng bỏ hẳn một lớp.
 - SVM dùng cấu hình cố định `C=1`, RBF, `gamma=scale`, balanced class weight, StandardScaler và mean-probability file aggregation. Cấu hình này chưa được tune trên validation; vì test đã được xem, không được tune C/gamma hoặc chọn thuật toán mới dựa trên kết quả test hiện tại rồi tiếp tục báo cáo như confirmation độc lập.
@@ -262,3 +263,4 @@ python paper/run_revision.py latex
 - **2026-08-05 22:57 ICT:** mở rộng ablation lên 72 cấu hình bằng handcrafted vibration+temperature 32-D. Random Forest depth 12/leaf 1 đạt CV Macro-F1 `0.9634 ± 0.0337`, vượt vibration-only winner `0.8416 ± 0.0914`; validation 1.0000. Locked test không được khởi tạo; ghi rõ nguy cơ temperature proxy cho TTF trong single-run trajectory.
 - **2026-08-05 23:10 ICT:** mở rộng lên 96 cấu hình với temperature-only 6-D; temperature-only RF đạt CV Macro-F1 `0.8954 ± 0.0694`. Chạy 30 file-grouped permutation: tráo vibration/temperature làm Macro-F1 giảm `0.3101/0.3489`; bearing temperature mean tương quan TTF `ρ=0.8714`. P2 được khóa; không tiếp tục model shopping trên run1.
 - **2026-08-05 23:17 ICT:** chạy validation-only robustness/efficiency cho Random Forest 32-D. Noise 20/10 dB không giảm điểm; mất vibration X, temperature, hoặc drift +2°C gây giảm Macro-F1 lớn. Feature extraction `2.458 ms/window`, inference `0.0363 ms/window`, model khoảng 2.2 MiB. Locked test không được khởi tạo.
+- **2026-08-05 23:24 ICT:** chạy five-seed deep validation robustness và efficiency seed 42. Deep model collapse dưới noise 20/10 dB và mất axis, nhưng không đổi khi mất/drift temperature; đo params, checkpoint, preprocessing/model/end-to-end latency và peak CUDA memory. Locked test không được khởi tạo; chuyển sang sửa paper.
