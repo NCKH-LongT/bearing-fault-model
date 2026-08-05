@@ -131,9 +131,11 @@ Chạy lại:
 python scripts/search_classical_filecv.py
 ```
 
-Feature/algorithm ablation gồm 72 cấu hình trên đúng năm folds đã hoàn thành. Với vibration-only, winner là SVM `C=0.1`, `gamma=0.1` dùng 26-D: CV Macro-F1 `0.8416 ± 0.0914`. Khi nối temperature stats 6-D thành bộ 32-D, global winner chuyển thành Random Forest 200 cây, depth 12, leaf 1 với CV Macro-F1 `0.9634 ± 0.0337`; cả năm folds đạt ít nhất `0.9348`. Winner validation Accuracy/Macro-F1 `1.0000`, nhưng validation đã bão hòa nên không được xem là bằng chứng test mới. Artifact: `revision_artifacts/classical_feature_filecv/summary.md`.
+Feature/algorithm ablation gồm 96 cấu hình trên đúng năm folds đã hoàn thành. Với vibration-only, winner là SVM `C=0.1`, `gamma=0.1` dùng 26-D: CV Macro-F1 `0.8416 ± 0.0914`. Temperature-only 6-D Random Forest đạt `0.8954 ± 0.0694`. Khi nối hai modality thành bộ 32-D, global winner là Random Forest 200 cây, depth 12, leaf 1 với CV Macro-F1 `0.9634 ± 0.0337`; cả năm folds đạt ít nhất `0.9348`. Winner validation Accuracy/Macro-F1 `1.0000`, nhưng đây là post-hoc exploratory validation đã bão hòa, không phải bằng chứng test mới. Artifact: `revision_artifacts/classical_feature_filecv/summary.md`.
 
-Mức tăng `+0.1218` CV Macro-F1 và độ lệch giảm từ `0.0914` xuống `0.0337` cho thấy temperature hữu ích mạnh trong within-run file-CV. Tuy nhiên toàn bộ file thuộc cùng một trajectory `run1`, nên temperature có thể là proxy cho thời gian/TTF. Cần temperature-only file-CV, permutation importance và run/bearing mới trước khi claim sensor fusion generalization.
+Mức tăng `+0.1218` CV Macro-F1 và độ lệch giảm từ `0.0914` xuống `0.0337` cho thấy temperature hữu ích mạnh trong within-run file-CV. File-grouped permutation 30 lần làm Macro-F1 giảm `0.3101` khi tráo vibration và `0.3489` khi tráo temperature, xác nhận winner dùng cả hai modality. Tuy nhiên bearing temperature mean/std/slope tương quan với TTF lần lượt `ρ=0.8714/0.7988/0.7390`; temperature có thể proxy cho vị trí trong trajectory. Audit: `revision_artifacts/temperature_proxy_audit/audit.md`.
+
+P2 dừng tại đây: không thêm thuật toán để tiếp tục tối ưu trên cùng single-run folds. Muốn claim sensor-fusion generalization phải thu thêm run/bearing độc lập. Trong lúc chưa có dữ liệu mới, chỉ tiếp tục robustness/efficiency và sửa paper với giới hạn within-run.
 
 ```bash
 python scripts/compare_classical_filecv.py

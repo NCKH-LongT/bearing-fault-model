@@ -154,6 +154,10 @@ def main() -> int:
         ):
             copy_required(classical_feature_cv / filename, package_root / "classical_feature_filecv" / filename)
 
+        proxy_audit = ROOT / "paper/revision_artifacts/temperature_proxy_audit"
+        for filename in ("audit.md", "audit.json"):
+            copy_required(proxy_audit / filename, package_root / "temperature_proxy_audit" / filename)
+
         files = sorted(path for path in package_root.rglob("*") if path.is_file())
         manifest = {
             "artifact_set": "bearing-revision-v2",

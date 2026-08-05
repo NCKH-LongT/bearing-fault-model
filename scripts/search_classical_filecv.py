@@ -45,7 +45,12 @@ def file_features(cfg: dict, split: str, max_windows: int) -> list[dict]:
             cfg.get("cache_dir"),
             max_windows=max_windows,
         )
-        rows.append({"file_id": item["file"], "label": int(item["label"]), "features": matrix})
+        rows.append({
+            "file_id": item["file"],
+            "label": int(item["label"]),
+            "ttf_percent": float(item.get("ttf_percent", np.nan)),
+            "features": matrix,
+        })
     return rows
 
 
@@ -64,16 +69,23 @@ def fit_files(model: Pipeline, files: list[dict]) -> None:
 
 def predict_files(model: Pipeline, files: list[dict]) -> tuple[np.ndarray, np.ndarray, list[dict]]:
     truth, predicted, records = [], [], []
+    all_features = np.concatenate([row["features"] for row in files], axis=0)
+    if hasattr(model, "decision_function"):
+        all_scores = np.asarray(model.decision_function(all_features), dtype=float)
+    elif hasattr(model, "predict_proba"):
+        all_scores = np.asarray(model.predict_proba(all_features), dtype=float)
+    else:
+        window_predictions = model.predict(all_features)
+        class_to_index = {label: index for index, label in enumerate(model.classes_)}
+        all_scores = np.zeros((len(window_predictions), len(model.classes_)), dtype=float)
+        for row_index, label in enumerate(window_predictions):
+            all_scores[row_index, class_to_index[label]] = 1.0
+    if all_scores.ndim == 1:
+        all_scores = np.column_stack([-all_scores, all_scores])
+    offset = 0
     for row in files:
-        if hasattr(model, "decision_function"):
-            scores = np.asarray(model.decision_function(row["features"]), dtype=float)
-        elif hasattr(model, "predict_proba"):
-            scores = np.asarray(model.predict_proba(row["features"]), dtype=float)
-        else:
-            window_predictions = model.predict(row["features"])
-            scores = np.eye(len(model.classes_), dtype=float)[window_predictions]
-        if scores.ndim == 1:
-            scores = np.column_stack([-scores, scores])
+        scores = all_scores[offset : offset + len(row["features"])]
+        offset += len(row["features"])
         mean_score = scores.mean(axis=0)
         prediction = int(model.classes_[int(np.argmax(mean_score))])
         truth.append(row["label"])

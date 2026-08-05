@@ -75,13 +75,22 @@ def vib_temp_stats_32d(signal_window: np.ndarray) -> np.ndarray:
     ]).astype(np.float32, copy=False)
 
 
+def temp_stats_6d(signal_window: np.ndarray) -> np.ndarray:
+    """Temperature-only bearing/ambient mean, std and slope descriptors."""
+    signal = np.asarray(signal_window, dtype=np.float32)
+    if signal.ndim != 2 or signal.shape[1] < 4:
+        raise ValueError("Expected multimodal window with at least 4 columns.")
+    return temp_stats_window(signal[:, 2:4])
+
+
 FEATURE_EXTRACTORS = {
     "vib_stats_8d": vib_stats_8d,
     "vib_stats_26d": vib_stats_26d,
     "vib_temp_stats_32d": vib_temp_stats_32d,
+    "temp_stats_6d": temp_stats_6d,
 }
 
-FULL_SIGNAL_FEATURES = {"vib_temp_stats_32d"}
+FULL_SIGNAL_FEATURES = {"vib_temp_stats_32d", "temp_stats_6d"}
 
 
 def resolve_feature_extractor(name: str):

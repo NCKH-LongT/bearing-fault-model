@@ -31,7 +31,7 @@ from scripts.search_classical_filecv import file_features, fit_files, predict_fi
 
 
 CLASS_NAMES = ("healthy", "degrading", "fault")
-FEATURE_NAMES = ("vib_stats_8d", "vib_stats_26d", "vib_temp_stats_32d")
+FEATURE_NAMES = ("vib_stats_8d", "vib_stats_26d", "temp_stats_6d", "vib_temp_stats_32d")
 
 
 def candidates() -> list[dict]:
