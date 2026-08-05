@@ -111,6 +111,27 @@ def main() -> int:
                     package_root / "temperature_only" / f"seed_{seed}" / filename,
                 )
 
+        normalized_runs = ROOT / "runs/revision_multimodal_normalized_validation"
+        for filename in ("summary.md", "aggregate.json"):
+            copy_required(normalized_runs / filename, package_root / "multimodal_normalized_validation" / filename)
+        for seed in (42, 43, 44, 45, 46):
+            for filename in (
+                "best.pt",
+                "config.yaml",
+                "train_log.csv",
+                "validation_report.txt",
+                "validation_confusion_matrix.csv",
+                "validation_summary.json",
+            ):
+                copy_required(
+                    normalized_runs / f"seed_{seed}" / filename,
+                    package_root / "multimodal_normalized_validation" / f"seed_{seed}" / filename,
+                )
+
+        balance_audit = ROOT / "paper/revision_artifacts/train_balance_audit"
+        for filename in ("audit.md", "audit.json"):
+            copy_required(balance_audit / filename, package_root / "train_balance_audit" / filename)
+
         files = sorted(path for path in package_root.rglob("*") if path.is_file())
         manifest = {
             "artifact_set": "bearing-revision-v2",

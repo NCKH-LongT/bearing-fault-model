@@ -75,7 +75,7 @@ Raw CSV phải được đặt trong `data/` theo `data/manifest.csv`. Dataset, 
 2. [x] Kiểm tra class collapse, confidence và độ nhất trí giữa seed.
 3. [x] So sánh best-validation với test theo từng seed.
 4. [x] Kiểm tra thang đo và distribution của temperature feature theo split.
-5. [ ] Kiểm tra sampler/gradient theo lớp trên một validation experiment mới.
+5. [x] Kiểm tra sampler/gradient theo lớp trên một validation experiment mới.
 6. [x] Chạy temperature-only baseline với scaler chỉ fit trên train.
 
 Báo cáo chẩn đoán hiện tại: `revision_artifacts/deep_collapse_diagnostics/diagnostics.md`. Có 9/10 seed bỏ hẳn ít nhất một lớp, không có test file nào được cả năm seed dự đoán nhất trí, và khoảng cách best-validation đến test Macro-F1 là `0.2797–0.9333`. Sáu temperature descriptor đang đi vào nhánh tuyến tính theo đơn vị thô; tỷ lệ giữa độ lệch chuẩn lớn nhất và nhỏ nhất trên train là `2768.14`. Phân tích test này chỉ dùng để giải thích artifact đã khóa, không được dùng để chọn model tiếp theo.
@@ -110,7 +110,9 @@ python scripts/run_temperature_validation.py \
   --continue
 ```
 
-Bước P1 tiếp theo là chạy một multimodal validation ablation cố định với cùng train-only scaler và kiểm tra gradient/sampler; không mở test.
+Multimodal train-normalized validation cũng đã hoàn thành trên cùng năm seed: Accuracy, Macro-F1 và F1 từng lớp đều `1.0000 ± 0.0000`. Balanced sampler cho 10.000 draw đạt tỷ lệ Healthy/Degrading/Fault `34.11%/32.54%/33.35%`; gradient RMS khác 0 ở cả vibration backbone, temperature branch và classifier cho từng lớp. Chi tiết tại `revision_artifacts/multimodal_normalized_validation/summary.md` và `revision_artifacts/train_balance_audit/audit.md`.
+
+P1 đạt tiêu chí nội bộ trên validation, nhưng không thể kết luận normalization làm tăng generalization: validation 26 file đã bão hòa cả trước và sau thay đổi. Không mở lại locked test để phân xử. Bước kế tiếp chuyển sang P2 bằng group-CV/nhiều run hoặc một validation split mới; nếu chưa có thêm run, chỉ làm exploratory baseline và giữ claim within-run.
 
 ### P2 — Baseline và feature engineering trên validation mới
 

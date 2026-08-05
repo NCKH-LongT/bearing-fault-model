@@ -1,0 +1,79 @@
+{
+  "protocol": "train split only; locked test not instantiated",
+  "train_file_counts": {
+    "healthy": 46,
+    "degrading": 23,
+    "fault": 7
+  },
+  "balanced_sampler_empirical_counts": {
+    "healthy": 3411,
+    "degrading": 3254,
+    "fault": 3335
+  },
+  "sampler_draws": 10000,
+  "per_class_gradient_audit": {
+    "healthy": {
+      "files": 8,
+      "loss": 1.5331112146377563,
+      "gradient": {
+        "vibration_backbone": {
+          "parameters_with_gradient": 2797312,
+          "l2": 18.049229921871994,
+          "rms": 0.01079165922976442
+        },
+        "temperature_branch": {
+          "parameters_with_gradient": 224,
+          "l2": 0.13164401389607508,
+          "rms": 0.00879583566105037
+        },
+        "classifier": {
+          "parameters_with_gradient": 867,
+          "l2": 10.521084118047872,
+          "rms": 0.3573147498659785
+        }
+      }
+    },
+    "degrading": {
+      "files": 8,
+      "loss": 1.7142319679260254,
+      "gradient": {
+        "vibration_backbone": {
+          "parameters_with_gradient": 2797312,
+          "l2": 12.717720569434107,
+          "rms": 0.007603942503850814
+        },
+        "temperature_branch": {
+          "parameters_with_gradient": 224,
+          "l2": 0.1909103245680472,
+          "rms": 0.01275573260949008
+        },
+        "classifier": {
+          "parameters_with_gradient": 867,
+          "l2": 11.257887115337136,
+          "rms": 0.3823378915615479
+        }
+      }
+    },
+    "fault": {
+      "files": 7,
+      "loss": 0.9711394906044006,
+      "gradient": {
+        "vibration_backbone": {
+          "parameters_with_gradient": 2797312,
+          "l2": 15.324564343618176,
+          "rms": 0.00916257795799487
+        },
+        "temperature_branch": {
+          "parameters_with_gradient": 224,
+          "l2": 0.45030978230788665,
+          "rms": 0.030087587916229813
+        },
+        "classifier": {
+          "parameters_with_gradient": 867,
+          "l2": 10.28132369064312,
+          "rms": 0.349172058848146
+        }
+      }
+    }
+  }
+}

@@ -19,6 +19,7 @@ Ba file này là lớp chuẩn hóa cuối cùng dựa trên bộ run tốt nh�
 - `revision_search_5060.yaml`: search multimodal tối ưu cho RTX 5060 Ti, chỉ chọn theo validation.
 - `revision_search_vibration_5060.yaml`: search độc lập cho vibration-only baseline.
 - `revision_temperature_only_validation.yaml`: MLP temperature-only 323 tham số, scaler fit trên train và chỉ đánh giá validation trong P1.
+- `revision_multimodal_normalized_validation.yaml`: winner multimodal cố định cộng scaler nhiệt fit trên train, chạy five-seed validation trong P1.
 
 Chạy các config revision qua `paper/run_revision.py`; artifact được ghi vào `runs/revision/`.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a fixed multi-seed temperature-only validation experiment without test access."""
+"""Run a fixed multi-seed validation ablation without test access."""
 
 from __future__ import annotations
 
@@ -45,6 +45,7 @@ def main() -> int:
     parser.add_argument("--output-root", default="runs/revision_temperature_only_validation")
     parser.add_argument("--seeds", default="42,43,44,45,46")
     parser.add_argument("--artifact-dir", default="paper/revision_artifacts/temperature_only_validation")
+    parser.add_argument("--title", default="Temperature-only validation")
     parser.add_argument("--continue", dest="resume", action="store_true")
     args = parser.parse_args()
 
@@ -66,7 +67,7 @@ def main() -> int:
         cfg["log"]["out_dir"] = str(run_dir.relative_to(ROOT))
         derived_path = run_dir / "config.yaml"
         derived_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
-        command = [sys.executable, "train_logs.py", "--config", str(derived_path.relative_to(ROOT))]
+        command = [sys.executable, "-u", "train_logs.py", "--config", str(derived_path.relative_to(ROOT))]
         with (run_dir / "console.log").open("w", encoding="utf-8") as log:
             process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             assert process.stdout is not None
@@ -74,7 +75,7 @@ def main() -> int:
                 print(line, end="", flush=True)
                 log.write(line)
             if process.wait():
-                raise SystemExit(f"Temperature-only validation failed for seed {seed}")
+                raise SystemExit(f"Validation ablation failed for seed {seed}")
         accuracy, macro_f1, epoch = best_validation(run_dir / "train_log.csv")
         summary = {
             "seed": seed,
@@ -96,7 +97,7 @@ def main() -> int:
     aggregate_text = json.dumps(aggregate, indent=2) + "\n"
     (output_root / "aggregate.json").write_text(aggregate_text, encoding="utf-8")
     lines = [
-        "# Temperature-only validation",
+        f"# {args.title}",
         "",
         "Exploratory validation-only experiment; the locked test split was not evaluated.",
         "",
