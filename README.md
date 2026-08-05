@@ -1,6 +1,6 @@
 # Phân Loại Trạng Thái Ổ Bi (Run-to-Failure, STFT + Nhiệt Độ)
 
-Repository này chứa một pipeline đa phương thức gọn nhẹ cho bài toán phân loại 3 giai đoạn trạng thái ổ bi (healthy, degrading, fault) trên dữ liệu run-to-failure. Hệ thống sử dụng log-spectrogram STFT từ hai trục rung và đặc trưng nhiệt độ 6 chiều, kết hợp với quy trình đánh giá temporal có kiểm soát leakage theo trục time-to-failure (TTF).
+Repository này chứa pipeline đa phương thức cho bài toán phân loại ba giai đoạn trạng thái ổ bi (healthy, degrading, fault) trên dữ liệu run-to-failure. Revision hiện hành dùng held-out multi-class split ở cấp file, validation-only model selection và five-seed confirmation. Temporal/full-range lịch sử chỉ còn là retrospective analysis.
 
 ## Điểm chính
 
@@ -19,18 +19,16 @@ Repository này chứa một pipeline đa phương thức gọn nhẹ cho bài t
 - `runs/`: nơi lưu output, checkpoint và các kết quả đánh giá.
 - `paper/`: mã nguồn LaTeX, bibliography, Springer style và các figure/report của bài báo.
 - `paper/run_revision.py`: runner từng bước cho audit, primary revision, baseline và build LaTeX.
-- `paper/REVISION_STEP_BY_STEP.md`: hướng dẫn chạy lại revision theo từng bước.
-- `paper/RTX5060_CONTINUOUS_SEARCH_GUIDE.md`: cache dữ liệu, chạy validation search liên tục và xác nhận 5 seed trên RTX 5060 Ti.
-- `docs/PAPER_RERUN_GUIDE.md`: hướng dẫn từng bước để chạy lại pipeline paper.
+- `paper/README.md`: tài liệu canonical về kết quả, artifact release, chạy lại và roadmap nâng cấp.
+- `paper/REVISION_RUN_CHECKLIST.md`: checklist và nhật ký revision.
 - `docs/CANONICAL_RUN_AND_CLASSIC_COMPARE.md`: chốt bộ run chuẩn và lệnh so sánh baseline classic.
-- `old/`: tài liệu, bản build và mã Paderborn/GUI cũ được giữ lại để tra cứu.
 
 ## Dữ liệu và manifest
 
 - Mỗi file CSV đầu vào gồm các cột `[vib_x, vib_y, temp_bearing, temp_atm]`, lấy mẫu ở 25.6 kHz.
 - `data/manifest.csv` gồm các cột: `file, run_id, ttf_percent, fault_type` (nhãn: healthy/degrading/fault).
 - Cửa sổ trượt: `window_seconds=1.0`, `hop_seconds=0.5` cho cả rung và nhiệt độ.
-- Ghi chú về dữ liệu thô: `data/` hiện chứa khoảng 130 file CSV (~17 GB). Nếu muốn lấy đầy đủ dữ liệu sau khi clone trên máy khác, hãy dùng Git LFS và chạy `git lfs pull`.
+- Dữ liệu thô không nằm trong Git hoặc artifact release. Người dùng phải cung cấp CSV hợp lệ theo manifest.
 
 ## Thiết lập
 
@@ -39,22 +37,11 @@ Repository này chứa một pipeline đa phương thức gọn nhẹ cho bài t
 
 ## Bắt đầu nhanh
 
-1. Chạy lại pipeline paper theo cách chuẩn
-   - `python3 scripts/run_paper_sync.py --sync-figures`
-
-2. Chạy lại paper theo từng bước thủ công
-   - `python3 train_logs.py --config configs/best_temporal.yaml`
-   - `python3 eval_logs.py --config configs/best_temporal.yaml --ckpt runs/paper_sync/temporal/best.pt`
-   - `python3 eval_logs.py --config configs/best_fullrange_eval.yaml --ckpt runs/paper_sync/temporal/best.pt --agg vote`
-
-3. Các config phát triển kiểu cũ
-   - Chỉ dùng khi thật sự cần tra cứu các nhánh cũ hoặc ablation lịch sử
-   - Nên đọc `configs/README.md` trước khi dùng các config không thuộc pipeline paper hiện tại
-
-4. Bộ config chuẩn để viết paper
-   - `configs/best_stratified_ref.yaml`
-   - `configs/best_temporal.yaml`
-   - `configs/best_fullrange_eval.yaml`
+1. Đọc `paper/README.md`.
+2. Cài dependency: `python -m pip install -r requirements-paper.txt`.
+3. Tạo cache: `python scripts/cache_dataset_npy.py --workers 2`.
+4. Kiểm tra: `python paper/run_revision.py preflight && python paper/run_revision.py smoke`.
+5. Audit: `python paper/run_revision.py audit`.
 
 ## Các thiết lập quan trọng
 
@@ -65,15 +52,13 @@ Repository này chứa một pipeline đa phương thức gọn nhẹ cho bài t
 
 ## Clone sang máy khác
 
-1. Cài Git LFS: `git lfs install`
-2. Clone repository như bình thường.
-3. Nếu remote có dữ liệu được track bằng LFS, lấy dữ liệu bằng `git lfs pull`.
-4. Tạo môi trường Python cục bộ riêng; `.venv/` cố ý không được version.
-5. Nếu muốn version dữ liệu thô trong repo này, hãy track bằng Git LFS và add tường minh, ví dụ `git add -f data/*.csv`.
+1. Clone repository và tạo `.venv` cục bộ.
+2. Cung cấp raw CSV trong `data/` theo `data/manifest.csv` nếu cần chạy lại.
+3. Nếu chỉ inference/audit artifact, tải release theo `paper/README.md`; không cần đưa `runs/` vào Git.
 
 ## Tái lập figure cho paper
 
-- Chạy pipeline `paper_sync` theo hướng dẫn trong `docs/PAPER_RERUN_GUIDE.md`.
+- Luồng revision hiện hành được mô tả trong `paper/README.md`.
 - Artifact được sinh ra dưới `runs/paper_sync/...`.
 - Bản đã chọn để dùng cho paper sẽ được sync vào `paper/figures/stratified`, `paper/figures/temporal` và `paper/figures/fullrange`.
 

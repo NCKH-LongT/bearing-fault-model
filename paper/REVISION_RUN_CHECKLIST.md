@@ -1,6 +1,6 @@
 # Checklist chạy revision bài báo
 
-Cập nhật gần nhất: **2026-08-05 11:32 ICT**.
+Cập nhật gần nhất: **2026-08-05 11:52 ICT**.
 
 File này là nhật ký vận hành và checklist resume cho quy trình revision. Kết quả chính phải đến từ held-out multi-class test ở cấp file. Hyperparameter chỉ được chọn bằng validation Macro-F1; không mở test trong lúc search.
 
@@ -233,3 +233,4 @@ python paper/run_revision.py latex
 - **2026-08-05 00:43 ICT:** search v1 hoàn thành 24/24 multimodal và 16/16 vibration-only; cả hai leader là trial 001 với validation Macro-F1 1.0000; test vẫn khóa.
 - **2026-08-05 00:44 ICT:** xác nhận 23 cảnh báo scheduler trong v1; sửa AMP step detection, kiểm tra cú pháp/smoke thành công và khởi động search v2 tại `runs/revision_search_5060_v2` cùng `runs/revision_search_vibration_5060_v2`, PID 314569.
 - **2026-08-05 11:32 ICT:** xác minh confirmation v2 đủ năm seed cho multimodal và vibration-only; xác minh SVM test support 16/8/3 và kết quả Accuracy 0.8148, Macro-F1 0.7681. SVM vượt hai deep model; ghi rõ không tune thêm trên test đã mở và chuyển trọng tâm sang CI, error analysis và external/run-disjoint validation.
+- **2026-08-05 11:52 ICT:** hợp nhất hướng dẫn hiện hành vào `paper/README.md`, thêm roadmap P0–P5, thêm script đóng gói winner artifact và chuẩn bị GitHub Release `revision-v2-artifacts-20260805`. Xóa các guide trong `paper/` đã bị tài liệu canonical thay thế.
