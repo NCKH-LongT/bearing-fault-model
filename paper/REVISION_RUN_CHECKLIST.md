@@ -1,6 +1,6 @@
 # Checklist chạy revision bài báo
 
-Cập nhật gần nhất: **2026-08-05 11:52 ICT**.
+Cập nhật gần nhất: **2026-08-05 19:48 ICT**.
 
 File này là nhật ký vận hành và checklist resume cho quy trình revision. Kết quả chính phải đến từ held-out multi-class test ở cấp file. Hyperparameter chỉ được chọn bằng validation Macro-F1; không mở test trong lúc search.
 
@@ -68,13 +68,13 @@ sed -n '1,240p' paper/revision_artifacts/protocol_audit.md
 - [x] Sửa `train_logs.py` để scheduler chỉ bước sau optimizer update thực sự.
 - [x] Giữ nguyên artifact v1; tạo output root v2, không ghi đè.
 - [x] Khởi động queue nền có resume và chống sleep.
-- [ ] Hoàn thành đủ 24 multimodal trials.
-- [ ] Kiểm tra `runs/revision_search_5060_v2/leaderboard.csv`.
-- [ ] Xác nhận winner tại `runs/revision_search_5060_v2/best_search_config.yaml`.
-- [ ] Hoàn thành đủ 16 vibration-only trials.
-- [ ] Kiểm tra `runs/revision_search_vibration_5060_v2/leaderboard.csv`.
-- [ ] Xác nhận winner tại `runs/revision_search_vibration_5060_v2/best_search_config.yaml`.
-- [ ] Khóa search space; không thay đổi sau khi xem test.
+- [x] Hoàn thành đủ 24 multimodal trials.
+- [x] Kiểm tra `runs/revision_search_5060_v2/leaderboard.csv`.
+- [x] Xác nhận winner tại `runs/revision_search_5060_v2/best_search_config.yaml`.
+- [x] Hoàn thành đủ 16 vibration-only trials.
+- [x] Kiểm tra `runs/revision_search_vibration_5060_v2/leaderboard.csv`.
+- [x] Xác nhận winner tại `runs/revision_search_vibration_5060_v2/best_search_config.yaml`.
+- [x] Khóa search space; không thay đổi sau khi xem test.
 
 Queue tự dừng trước test. Không chạy thêm queue song song.
 
@@ -171,8 +171,8 @@ sed -n '1,40p' runs/revision/svm_vib8_stratified/report_test.txt
 
 - [x] Lập bảng Accuracy, Macro-F1 và F1 từng lớp cho SVM, vibration-only và multimodal.
 - [x] Báo cáo mean ± std của năm seed deep model.
-- [ ] Tính bootstrap 95% CI ở cấp file.
-- [ ] Thực hiện paired comparison ở cấp file.
+- [x] Tính bootstrap 95% CI ở cấp file với 10.000 replicate.
+- [x] Thực hiện paired bootstrap và McNemar exact ở cấp file.
 - [ ] Bổ sung temperature-only baseline.
 - [ ] Bổ sung efficiency: params, model size, STFT/model/end-to-end latency, throughput và memory.
 - [ ] Bổ sung robustness: vibration noise, temperature missing/drift và mất một vibration axis.
@@ -234,3 +234,4 @@ python paper/run_revision.py latex
 - **2026-08-05 00:44 ICT:** xác nhận 23 cảnh báo scheduler trong v1; sửa AMP step detection, kiểm tra cú pháp/smoke thành công và khởi động search v2 tại `runs/revision_search_5060_v2` cùng `runs/revision_search_vibration_5060_v2`, PID 314569.
 - **2026-08-05 11:32 ICT:** xác minh confirmation v2 đủ năm seed cho multimodal và vibration-only; xác minh SVM test support 16/8/3 và kết quả Accuracy 0.8148, Macro-F1 0.7681. SVM vượt hai deep model; ghi rõ không tune thêm trên test đã mở và chuyển trọng tâm sang CI, error analysis và external/run-disjoint validation.
 - **2026-08-05 11:52 ICT:** hợp nhất hướng dẫn hiện hành vào `paper/README.md`, thêm roadmap P0–P5, thêm script đóng gói winner artifact và chuẩn bị GitHub Release `revision-v2-artifacts-20260805`. Xóa các guide trong `paper/` đã bị tài liệu canonical thay thế.
+- **2026-08-05 19:48 ICT:** xuất file ID, mean logits/probabilities và prediction cho 10 checkpoint deep; xuất file ID/score cho SVM; chạy 10.000 file-level bootstrap replicate, paired bootstrap và McNemar exact. Báo cáo lưu tại `paper/revision_artifacts/locked_test_statistics/`.

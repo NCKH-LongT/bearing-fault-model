@@ -35,6 +35,7 @@ def add_confirmation(source_root: Path, destination_root: Path) -> None:
             Path("summary.json"),
             Path("eval/report.txt"),
             Path("eval/confusion_matrix.csv"),
+            Path("eval/predictions_file.csv"),
         ):
             copy_required(source_seed / relative, destination_seed / relative)
 
@@ -80,6 +81,10 @@ def main() -> int:
             destination = package_root / "search" / destination_name
             for filename in ("leaderboard.csv", "best_search_config.yaml", "best_trial.txt"):
                 copy_required(source_root / filename, destination / filename)
+
+        statistics_root = ROOT / "paper/revision_artifacts/locked_test_statistics"
+        for filename in ("statistics.md", "statistics.json"):
+            copy_required(statistics_root / filename, package_root / "statistics" / filename)
 
         files = sorted(path for path in package_root.rglob("*") if path.is_file())
         manifest = {

@@ -14,12 +14,22 @@ Protocol revision dùng file-wise stratified split cố định bằng seed `202
 
 SVM là model mạnh nhất trên test hiện tại. Hai deep model không ổn định qua seed và đôi khi bỏ hẳn một lớp. Không tune thêm dựa trên 27 test file này.
 
+Bootstrap 10.000 lần ở cấp file cho kết quả:
+
+| Model | Accuracy (95% CI) | Macro-F1 (95% CI) |
+|---|---:|---:|
+| SVM vibration 8-D | 0.8148 [0.6667, 0.9630] | 0.7681 [0.4372, 0.9375] |
+| Multimodal late fusion | 0.5556 [0.4889, 0.6074] | 0.4544 [0.2617, 0.5717] |
+| Vibration-only CNN | 0.4593 [0.4000, 0.5111] | 0.3314 [0.2611, 0.3713] |
+
+Paired bootstrap cho multimodal trừ vibration-only: Accuracy `+0.0969` [0.0148, 0.1852], nhưng Macro-F1 `+0.1019` [-0.0677, 0.2495] chưa loại trừ 0. So với SVM, multimodal thấp hơn cả Accuracy `-0.2591` [-0.3852, -0.1259] và Macro-F1 `-0.3063` [-0.5947, -0.0406]. Chi tiết McNemar theo seed nằm trong `revision_artifacts/locked_test_statistics/statistics.json`.
+
 ## 2. Lấy artifact để không phải train lại
 
-Artifact winner không nằm trong Git. Tải GitHub Release `revision-v2-artifacts-20260805`:
+Artifact winner không nằm trong Git. Tải GitHub Release `revision-v2-artifacts-20260805.1`:
 
 ```bash
-gh release download revision-v2-artifacts-20260805 \
+gh release download revision-v2-artifacts-20260805.1 \
   --repo NCKH-LongT/bearing-fault-model \
   --pattern 'bearing-revision-v2-artifacts*'
 

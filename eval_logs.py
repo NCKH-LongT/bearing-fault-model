@@ -1,5 +1,6 @@
 import os
 import argparse
+import csv
 import yaml
 import numpy as np
 import torch
@@ -17,7 +18,7 @@ except Exception:  # matplotlib may be missing; plotting will be skipped
 
 
 def evaluate_filewise(ds, model, device, batch_size=32, agg="mean", channels_last=False, use_amp=False):
-    ys, ps = [], []
+    ys, ps, records = [], [], []
     with torch.no_grad():
         for i in range(len(ds)):
             X, T, y = ds.get_all_windows(i)
@@ -36,12 +37,24 @@ def evaluate_filewise(ds, model, device, batch_size=32, agg="mean", channels_las
                     lb = model(xb, tb)
                 outs.append(lb.cpu())
             logits = torch.cat(outs, dim=0)
+            mean_logits = logits.mean(0)
+            probabilities = torch.softmax(mean_logits, dim=0)
             if agg == "mean":
-                pred = int(logits.mean(0).argmax().item())
+                pred = int(mean_logits.argmax().item())
             else:
                 pred = int(np.bincount(logits.argmax(1).numpy()).argmax())
             ys.append(y)
             ps.append(pred)
+            item = ds.items[i]
+            records.append({
+                "file_id": item["file"],
+                "ttf_percent": float(item.get("ttf_percent", np.nan)),
+                "y_true": y,
+                "y_pred": pred,
+                "n_windows": int(n),
+                **{f"logit_{j}": float(mean_logits[j].item()) for j in range(len(mean_logits))},
+                **{f"prob_{j}": float(probabilities[j].item()) for j in range(len(probabilities))},
+            })
     from sklearn.metrics import classification_report, confusion_matrix
     print(classification_report(ys, ps, digits=4, zero_division=0))
     try:
@@ -49,7 +62,7 @@ def evaluate_filewise(ds, model, device, batch_size=32, agg="mean", channels_las
         print(confusion_matrix(ys, ps, labels=labels_all))
     except Exception:
         print(confusion_matrix(ys, ps))
-    return ys, ps
+    return ys, ps, records
 
 
 def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
@@ -146,7 +159,7 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         model = model.to(memory_format=torch.channels_last)
 
     print(f"Test set report (file-wise, {agg}-agg):")
-    ys, ps = evaluate_filewise(
+    ys, ps, prediction_records = evaluate_filewise(
         test_ds,
         model,
         device,
@@ -160,6 +173,17 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
     eval_dir_name = "eval" if agg == "mean" else f"eval_{agg}"
     out_dir = os.path.join(cfg["log"]["out_dir"], eval_dir_name)
     os.makedirs(out_dir, exist_ok=True)
+
+    prediction_path = os.path.join(out_dir, "predictions_file.csv")
+    with open(prediction_path, "w", newline="", encoding="utf-8") as stream:
+        fieldnames = [
+            "file_id", "ttf_percent", "y_true", "y_pred", "n_windows",
+            "logit_0", "logit_1", "logit_2", "prob_0", "prob_1", "prob_2",
+        ]
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(prediction_records)
+    print(f"Saved file-level predictions: {prediction_path}")
 
     # Save textual report and confusion matrix values
     from sklearn.metrics import classification_report, confusion_matrix, f1_score

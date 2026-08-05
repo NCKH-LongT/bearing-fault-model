@@ -207,7 +207,7 @@ def _window_scores(model, X: np.ndarray) -> np.ndarray:
     return scores
 
 
-def evaluate_filewise(cfg: dict, model, split: str, override_split_mode: str = None) -> Tuple[List[int], List[int]]:
+def evaluate_filewise(cfg: dict, model, split: str, override_split_mode: str = None) -> Tuple[List[int], List[int], List[Dict]]:
     items = build_split_items(cfg, split, override_split_mode=override_split_mode)
     win = int(round(float(cfg["window_seconds"]) * int(cfg["sampling_rate"])))
     hop = int(round(float(cfg["hop_seconds"]) * int(cfg["sampling_rate"])))
@@ -219,22 +219,32 @@ def evaluate_filewise(cfg: dict, model, split: str, override_split_mode: str = N
 
     ys: List[int] = []
     ps: List[int] = []
+    records: List[Dict] = []
     for item in items:
         X = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate, cache_dir)
         if X.size == 0:
             continue
+        scores = _window_scores(model, X)
+        mean_scores = scores.mean(axis=0)
         if agg == "vote":
             pred_windows = model.predict(X)
             pred = int(np.bincount(pred_windows, minlength=len(CLASS_NAMES)).argmax())
         else:
-            scores = _window_scores(model, X)
-            pred = int(scores.mean(axis=0).argmax())
+            pred = int(mean_scores.argmax())
         ys.append(int(item["label"]))
         ps.append(pred)
-    return ys, ps
+        records.append({
+            "file_id": item["file"],
+            "ttf_percent": float(item.get("ttf_percent", np.nan)),
+            "y_true": int(item["label"]),
+            "y_pred": pred,
+            "n_windows": int(len(X)),
+            **{f"score_{j}": float(mean_scores[j]) for j in range(len(mean_scores))},
+        })
+    return ys, ps, records
 
 
-def save_artifacts(cfg: dict, model, ys: Sequence[int], ps: Sequence[int], split: str) -> None:
+def save_artifacts(cfg: dict, model, ys: Sequence[int], ps: Sequence[int], records: Sequence[Dict], split: str) -> None:
     out_dir = cfg["log"]["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
 
@@ -258,9 +268,9 @@ def save_artifacts(cfg: dict, model, ys: Sequence[int], ps: Sequence[int], split
 
     with open(os.path.join(out_dir, f"predictions_{split}.csv"), "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["y_true", "y_pred"])
-        for y, p in zip(ys, ps):
-            writer.writerow([int(y), int(p)])
+        writer.writerow(["file_id", "ttf_percent", "y_true", "y_pred", "n_windows", "score_0", "score_1", "score_2"])
+        for row in records:
+            writer.writerow([row[key] for key in ("file_id", "ttf_percent", "y_true", "y_pred", "n_windows", "score_0", "score_1", "score_2")])
 
 
 def train_and_eval(cfg: dict) -> None:
@@ -295,8 +305,8 @@ def train_and_eval(cfg: dict) -> None:
     model.fit(X_train, y_train)
 
     eval_split = cfg["classical"].get("eval_split", "test")
-    ys, ps = evaluate_filewise(cfg, model, split=eval_split, override_split_mode=eval_split_mode)
-    save_artifacts(cfg, model, ys, ps, split=eval_split)
+    ys, ps, records = evaluate_filewise(cfg, model, split=eval_split, override_split_mode=eval_split_mode)
+    save_artifacts(cfg, model, ys, ps, records, split=eval_split)
 
     classes_in_train = sorted(np.unique(y_train).tolist())
     print(f"Train windows: {len(X_train)}  |  classes seen: {[CLASS_NAMES[c] for c in classes_in_train]}")
