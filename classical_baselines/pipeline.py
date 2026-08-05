@@ -112,13 +112,18 @@ def extract_window_features(
     seconds_cap: Optional[float],
     sampling_rate: int,
     cache_dir: Optional[str] = None,
+    max_windows: Optional[int] = None,
 ) -> np.ndarray:
     cap = int(seconds_cap * sampling_rate) if seconds_cap else None
     arr = read_signal_csv(item["path"], max_rows=cap, cache_dir=cache_dir)
     vib = arr[:, :2]
     extractor = resolve_feature_extractor(feature_name)
+    windows = make_windows(vib.shape[0], win, hop)
+    if isinstance(max_windows, int) and max_windows > 0 and len(windows) > max_windows:
+        indices = np.linspace(0, len(windows) - 1, max_windows, dtype=int)
+        windows = [windows[index] for index in indices]
     feats = []
-    for s, e in make_windows(vib.shape[0], win, hop):
+    for s, e in windows:
         feats.append(extractor(vib[s:e]))
     if not feats:
         return np.zeros((0, 8), dtype=np.float32)

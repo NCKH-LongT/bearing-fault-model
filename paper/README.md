@@ -116,12 +116,20 @@ P1 đạt tiêu chí nội bộ trên validation, nhưng không thể kết lu�
 
 ### P2 — Baseline và feature engineering trên validation mới
 
-- SVM grid: `C ∈ {0.1,1,10,100}`, `gamma ∈ {scale,0.001,0.01,0.1}`.
-- So sánh mean decision score với probability aggregation.
+- [x] SVM grid: `C ∈ {0.1,1,10,100}`, `gamma ∈ {scale,0.001,0.01,0.1}` bằng five-fold file-grouped CV trên train.
+- [x] Dùng mean decision score để tránh probability calibration ở cấp window.
 - Nếu cần probability, dùng calibration group-aware theo file; tránh calibration CV ở cấp window.
 - Thử Logistic Regression, Random Forest và XGBoost/LightGBM nếu dependency được khóa.
 - Mở rộng handcrafted feature bằng kurtosis, skewness, impulse/shape/clearance factor và band energy; ablation phải chỉ ra feature nào hữu ích.
 - Thử vibration + temperature handcrafted baseline để kiểm tra giá trị bổ sung của modality trước khi tăng độ phức tạp deep model.
+
+Kết quả P2 hiện tại: manifest chỉ chứa một `run1`, nên không thể chạy leave-one-run-out/cross-bearing. SVM được chọn hoàn toàn bằng five-fold stratified CV ở cấp file trên 76 train file, tối đa 32 window/file; winner `C=1`, `gamma=0.1`. Train-CV Macro-F1 `0.8157 ± 0.1576`; đánh giá một lần trên 26 validation file đạt Accuracy `0.8462`, Macro-F1 `0.8631`, class F1 `0.8750/0.7143/1.0000`. Fold CV yếu nhất chỉ đạt Macro-F1 `0.5582`, cho thấy độ nhạy theo file-group còn lớn. Artifact: `revision_artifacts/svm_filecv_validation/summary.md`.
+
+Chạy lại:
+
+```bash
+python scripts/search_classical_filecv.py
+```
 
 Không được dùng test hiện tại để chọn thuật toán hoặc hyperparameter.
 

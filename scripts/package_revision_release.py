@@ -132,6 +132,17 @@ def main() -> int:
         for filename in ("audit.md", "audit.json"):
             copy_required(balance_audit / filename, package_root / "train_balance_audit" / filename)
 
+        svm_filecv = ROOT / "runs/revision_svm_filecv_validation"
+        for filename in (
+            "summary.md",
+            "results.json",
+            "model.pkl",
+            "validation_predictions.csv",
+            "validation_report.txt",
+            "validation_confusion_matrix.csv",
+        ):
+            copy_required(svm_filecv / filename, package_root / "svm_filecv_validation" / filename)
+
         files = sorted(path for path in package_root.rglob("*") if path.is_file())
         manifest = {
             "artifact_set": "bearing-revision-v2",
