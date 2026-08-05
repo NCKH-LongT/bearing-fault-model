@@ -1,0 +1,4 @@
+label_base,n,macro_f1_mean,macro_f1_std,f1_healthy_mean,f1_healthy_std,f1_degrading_mean,f1_degrading_std,f1_fault_mean,f1_fault_std
+temporal_broad,1,0.3324,0.0,0.0,0.0,0.0741,0.0,0.9231,0.0
+temporal_late,1,0.32,0.0,0.0,0.0,0.0,0.0,0.96,0.0
+temporal_scratch,1,0.1667,0.0,0.0,0.0,0.0,0.0,0.5,0.0

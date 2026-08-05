@@ -1,0 +1,76 @@
+# Exploratory validation-only temperature baseline. Never evaluate this config
+# on the locked revision test set while choosing model settings.
+data_dir: data
+cache_dir: data_cache/npy
+manifest: data/manifest.csv
+exclude_list: null
+
+sampling_rate: 25600
+window_seconds: 1.0
+hop_seconds: 0.5
+
+split_mode: stratified
+stratified:
+  train: 0.6
+  val: 0.2
+  test: 0.2
+  min_per_class_val: 3
+  min_per_class_test: 3
+random_seed: 20260803
+
+stft:
+  n_fft: 2048
+  hop_length: 512
+  window: hann
+  log_add: 1.0
+
+input_size: [160, 160]
+num_classes: 3
+
+model:
+  use_vibration: false
+  use_temp: true
+  temp_only_max_windows_per_file: 32
+  temp_feature:
+    type: stats6
+    normalization:
+      enabled: true
+      fit_max_windows_per_file: 32
+
+train:
+  batch_size: 256
+  samples_per_file: 16
+  init_from: null
+  epochs: 60
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  num_workers: 0
+  seed: 42
+  deterministic: true
+  early_stop_patience: 12
+  early_stop: true
+  prefetch_factor: 2
+  eval_every: 1
+  val_max_windows: 32
+  use_class_weights: false
+  balanced_sampling: true
+  use_amp: false
+  label_smoothing: 0.05
+
+performance:
+  channels_last: false
+  allow_tf32: true
+
+optim:
+  use_onecycle: false
+  pct_start: 0.3
+
+log:
+  out_dir: runs/revision_temperature_only_validation
+  save_best_by: macro_f1
+
+debug:
+  limit_files_train: null
+  limit_files_val: null
+  limit_files_test: null
+  seconds_cap: null

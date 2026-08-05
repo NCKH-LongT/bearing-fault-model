@@ -1,0 +1,198 @@
+{
+  "evaluation_unit": "file",
+  "n_files": 27,
+  "bootstrap_samples": 10000,
+  "bootstrap_seed": 20260805,
+  "models": {
+    "multimodal": {
+      "point_mean_across_runs": {
+        "accuracy": 0.5555555555555555,
+        "macro_f1": 0.45441160035134215
+      },
+      "bootstrap_95_ci": {
+        "accuracy": {
+          "mean": 0.5557148148148148,
+          "lower_95": 0.48888888888888893,
+          "upper_95": 0.6074074074074074
+        },
+        "macro_f1": {
+          "mean": 0.42606076890798666,
+          "lower_95": 0.2617351048774758,
+          "upper_95": 0.5717234307478211
+        }
+      },
+      "per_run": [
+        {
+          "accuracy": 0.37037037037037035,
+          "macro_f1": 0.4282828282828283
+        },
+        {
+          "accuracy": 0.6666666666666666,
+          "macro_f1": 0.526829268292683
+        },
+        {
+          "accuracy": 0.3333333333333333,
+          "macro_f1": 0.3235294117647059
+        },
+        {
+          "accuracy": 0.7407407407407407,
+          "macro_f1": 0.6088011088011088
+        },
+        {
+          "accuracy": 0.6666666666666666,
+          "macro_f1": 0.3846153846153846
+        }
+      ]
+    },
+    "vibration_only": {
+      "point_mean_across_runs": {
+        "accuracy": 0.45925925925925926,
+        "macro_f1": 0.331426588914961
+      },
+      "bootstrap_95_ci": {
+        "accuracy": {
+          "mean": 0.4589888888888889,
+          "lower_95": 0.4,
+          "upper_95": 0.5111111111111112
+        },
+        "macro_f1": {
+          "mean": 0.3246559325248516,
+          "lower_95": 0.26114206708834314,
+          "upper_95": 0.37128010903620656
+        }
+      },
+      "per_run": [
+        {
+          "accuracy": 0.6666666666666666,
+          "macro_f1": 0.46974358974358976
+        },
+        {
+          "accuracy": 0.6296296296296297,
+          "macro_f1": 0.7202797202797203
+        },
+        {
+          "accuracy": 0.5925925925925926,
+          "macro_f1": 0.24806201550387597
+        },
+        {
+          "accuracy": 0.2962962962962963,
+          "macro_f1": 0.15238095238095237
+        },
+        {
+          "accuracy": 0.1111111111111111,
+          "macro_f1": 0.06666666666666667
+        }
+      ]
+    },
+    "svm_vib8": {
+      "point_mean_across_runs": {
+        "accuracy": 0.8148148148148148,
+        "macro_f1": 0.7680911680911681
+      },
+      "bootstrap_95_ci": {
+        "accuracy": {
+          "mean": 0.8149148148148148,
+          "lower_95": 0.6666666666666666,
+          "upper_95": 0.9629629629629629
+        },
+        "macro_f1": {
+          "mean": 0.7327475831603185,
+          "lower_95": 0.4371794871794872,
+          "upper_95": 0.9375306372549015
+        }
+      },
+      "per_run": [
+        {
+          "accuracy": 0.8148148148148148,
+          "macro_f1": 0.7680911680911681
+        }
+      ]
+    }
+  },
+  "paired_bootstrap": {
+    "multimodal_minus_vibration_only": {
+      "accuracy": {
+        "mean": 0.09685555555555554,
+        "lower_95": 0.014814814814814723,
+        "upper_95": 0.18518518518518512,
+        "probability_a_greater_than_b": 0.9851
+      },
+      "macro_f1": {
+        "mean": 0.10190934541221479,
+        "lower_95": -0.0676546310536787,
+        "upper_95": 0.24951183663443682,
+        "probability_a_greater_than_b": 0.8848
+      }
+    },
+    "multimodal_minus_svm": {
+      "accuracy": {
+        "mean": -0.2591266666666666,
+        "lower_95": -0.3851851851851852,
+        "upper_95": -0.12592592592592589,
+        "probability_a_greater_than_b": 0.0002
+      },
+      "macro_f1": {
+        "mean": -0.30631043478996195,
+        "lower_95": -0.5947070392812731,
+        "upper_95": -0.04064925667307198,
+        "probability_a_greater_than_b": 0.0078
+      }
+    }
+  },
+  "mcnemar_by_seed": {
+    "multimodal_vs_svm": {
+      "42": {
+        "a_only_correct": 5,
+        "b_only_correct": 17,
+        "exact_p_value": 0.01690053939819336
+      },
+      "43": {
+        "a_only_correct": 1,
+        "b_only_correct": 5,
+        "exact_p_value": 0.21875
+      },
+      "44": {
+        "a_only_correct": 4,
+        "b_only_correct": 17,
+        "exact_p_value": 0.007197380065917969
+      },
+      "45": {
+        "a_only_correct": 0,
+        "b_only_correct": 2,
+        "exact_p_value": 0.5
+      },
+      "46": {
+        "a_only_correct": 0,
+        "b_only_correct": 4,
+        "exact_p_value": 0.125
+      }
+    },
+    "multimodal_vs_vibration_only": {
+      "42": {
+        "a_only_correct": 2,
+        "b_only_correct": 10,
+        "exact_p_value": 0.03857421875
+      },
+      "43": {
+        "a_only_correct": 10,
+        "b_only_correct": 9,
+        "exact_p_value": 1.0
+      },
+      "44": {
+        "a_only_correct": 9,
+        "b_only_correct": 16,
+        "exact_p_value": 0.2295229434967041
+      },
+      "45": {
+        "a_only_correct": 17,
+        "b_only_correct": 5,
+        "exact_p_value": 0.01690053939819336
+      },
+      "46": {
+        "a_only_correct": 18,
+        "b_only_correct": 3,
+        "exact_p_value": 0.0014896392822265625
+      }
+    }
+  }
+}

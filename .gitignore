@@ -33,6 +33,12 @@ paper_artifacts/
 # Data directory (keep manifest tracked)
 data/*
 !data/manifest.csv
+data_cache/
+old/
+
+# Generated paper build (paper sources and selected figures remain tracked)
+paper/main.pdf
+dist/
 
 # LaTeX build artifacts (keep .tex/.bib tracked)
 *.aux

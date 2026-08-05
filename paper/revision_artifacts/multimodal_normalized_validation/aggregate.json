@@ -1,0 +1,114 @@
+{
+  "protocol": "validation-only; locked test not evaluated",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "runs": [
+    {
+      "seed": 42,
+      "best_epoch": 6,
+      "val_accuracy": 1.0,
+      "val_macro_f1": 1.0,
+      "f1_healthy": 1.0,
+      "f1_degrading": 1.0,
+      "f1_fault": 1.0
+    },
+    {
+      "seed": 43,
+      "best_epoch": 14,
+      "val_accuracy": 1.0,
+      "val_macro_f1": 1.0,
+      "f1_healthy": 1.0,
+      "f1_degrading": 1.0,
+      "f1_fault": 1.0
+    },
+    {
+      "seed": 44,
+      "best_epoch": 6,
+      "val_accuracy": 1.0,
+      "val_macro_f1": 1.0,
+      "f1_healthy": 1.0,
+      "f1_degrading": 1.0,
+      "f1_fault": 1.0
+    },
+    {
+      "seed": 45,
+      "best_epoch": 5,
+      "val_accuracy": 1.0,
+      "val_macro_f1": 1.0,
+      "f1_healthy": 1.0,
+      "f1_degrading": 1.0,
+      "f1_fault": 1.0
+    },
+    {
+      "seed": 46,
+      "best_epoch": 6,
+      "val_accuracy": 1.0,
+      "val_macro_f1": 1.0,
+      "f1_healthy": 1.0,
+      "f1_degrading": 1.0,
+      "f1_fault": 1.0
+    }
+  ],
+  "metrics": {
+    "val_accuracy": {
+      "mean": 1.0,
+      "std": 0.0,
+      "values": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "val_macro_f1": {
+      "mean": 1.0,
+      "std": 0.0,
+      "values": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "f1_healthy": {
+      "mean": 1.0,
+      "std": 0.0,
+      "values": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "f1_degrading": {
+      "mean": 1.0,
+      "std": 0.0,
+      "values": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "f1_fault": {
+      "mean": 1.0,
+      "std": 0.0,
+      "values": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  }
+}

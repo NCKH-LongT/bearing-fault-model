@@ -1,0 +1,70 @@
+# Validation-only hyperparameter search base for RTX 5060 Ti 16 GB.
+data_dir: data
+cache_dir: data_cache/npy
+manifest: data/manifest.csv
+exclude_list: null
+
+sampling_rate: 25600
+window_seconds: 1.0
+hop_seconds: 0.5
+
+split_mode: stratified
+stratified:
+  train: 0.6
+  val: 0.2
+  test: 0.2
+  min_per_class_val: 3
+  min_per_class_test: 3
+random_seed: 20260803
+
+stft:
+  n_fft: 2048
+  hop_length: 512
+  window: hann
+  log_add: 1.0
+
+input_size: [160, 160]
+num_classes: 3
+
+model:
+  use_temp: true
+  temp_feature:
+    type: stats6
+
+train:
+  batch_size: 96
+  samples_per_file: 16
+  init_from: null
+  epochs: 60
+  lr: 2.0e-4
+  weight_decay: 1.0e-3
+  num_workers: 8
+  seed: 42
+  deterministic: false
+  early_stop_patience: 12
+  early_stop: true
+  prefetch_factor: 2
+  eval_every: 1
+  val_max_windows: 50
+  use_class_weights: false
+  balanced_sampling: true
+  use_amp: true
+  label_smoothing: 0.05
+
+performance:
+  channels_last: true
+  allow_tf32: true
+
+optim:
+  use_onecycle: false
+  pct_start: 0.3
+
+log:
+  out_dir: runs/revision_search_5060
+  save_best_by: macro_f1
+
+debug:
+  limit_files_train: null
+  limit_files_val: null
+  limit_files_test: null
+  seconds_cap: null

@@ -12,7 +12,7 @@ from typing import List, Tuple, Optional
 
 from datasets.logs_ttf import LogsTTFDataset
 from features.spectrogram import SpectrogramTransform
-from features.temp_features import resolve_temp_feature
+from features.temp_features import StandardizedTempFeature, resolve_temp_feature
 from models.resnet2d import ResNet18Small
 
 
@@ -74,6 +74,34 @@ def compute_class_weights(manifest_path: str, mapping: dict) -> torch.Tensor:
     return torch.tensor(inv, dtype=torch.float32)
 
 
+def configure_temp_normalization(cfg, train_ds, val_ds, raw_feature_fn):
+    """Fit temperature scaling on train windows only, or reuse persisted stats."""
+    temp_cfg = (cfg.get("model", {}) or {}).get("temp_feature", {}) or {}
+    norm_cfg = temp_cfg.get("normalization", {}) or {}
+    if not bool(norm_cfg.get("enabled", False)):
+        return
+    mean = norm_cfg.get("mean")
+    std = norm_cfg.get("std")
+    if mean is None or std is None:
+        max_windows = int(norm_cfg.get("fit_max_windows_per_file", 32))
+        matrices = [
+            train_ds.get_all_temp_features(index, max_windows=max_windows)
+            for index in range(len(train_ds.items))
+        ]
+        matrix = np.concatenate([value for value in matrices if len(value)], axis=0)
+        mean = matrix.mean(axis=0).tolist()
+        std = matrix.std(axis=0).tolist()
+        norm_cfg["mean"] = mean
+        norm_cfg["std"] = std
+        norm_cfg["fit_split"] = "train"
+        norm_cfg["fit_windows"] = int(len(matrix))
+        temp_cfg["normalization"] = norm_cfg
+        print(f"Fitted temperature normalization on {len(matrix)} train windows only.")
+    normalizer = StandardizedTempFeature(raw_feature_fn, mean, std)
+    train_ds.temp_feature_fn = normalizer
+    val_ds.temp_feature_fn = normalizer
+
+
 def evaluate_filewise(
     model,
     ds: LogsTTFDataset,
@@ -82,6 +110,8 @@ def evaluate_filewise(
     agg: str = "mean",
     max_windows: Optional[int] = None,
     use_amp: bool = False,
+    channels_last: bool = False,
+    return_predictions: bool = False,
 ):
     """Evaluate by aggregating all windows per file (mean logit or majority-vote)."""
     model.eval()
@@ -103,8 +133,10 @@ def evaluate_filewise(
             logits_all = []
             n = X.shape[0]
             for s in range(0, n, batch_size):
-                xb = X[s:s+batch_size].to(device)
-                tb = T[s:s+batch_size].to(device)
+                xb = X[s:s+batch_size].to(device, non_blocking=True)
+                if channels_last:
+                    xb = xb.contiguous(memory_format=torch.channels_last)
+                tb = T[s:s+batch_size].to(device, non_blocking=True)
                 if use_amp:
                     try:
                         from torch.amp import autocast
@@ -129,6 +161,8 @@ def evaluate_filewise(
             ps.append(pred)
     acc = accuracy_score(ys, ps)
     f1 = f1_score(ys, ps, average="macro")
+    if return_predictions:
+        return acc, f1, ys, ps
     return acc, f1
 
 
@@ -143,7 +177,14 @@ def main(cfg_path: str):
         yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    perf_cfg = cfg.get("performance", {}) or {}
+    channels_last = bool(perf_cfg.get("channels_last", False)) and device.type == "cuda"
+    allow_tf32 = bool(perf_cfg.get("allow_tf32", True))
     if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+        torch.backends.cudnn.allow_tf32 = allow_tf32
+        if allow_tf32:
+            torch.set_float32_matmul_precision("high")
         try:
             gpu_name = torch.cuda.get_device_name(0)
             print(f"Using GPU: {gpu_name}")
@@ -182,6 +223,9 @@ def main(cfg_path: str):
 
     model_cfg = cfg.get("model", {}) or {}
     use_temp = bool(model_cfg.get("use_temp", True))
+    use_vibration = bool(model_cfg.get("use_vibration", True))
+    if not use_temp and not use_vibration:
+        raise ValueError("At least one input modality must be enabled")
     temp_feat_fn = None
     temp_feat_dim = 0
     temp_ctx_seconds = None
@@ -214,6 +258,10 @@ def main(cfg_path: str):
         temp_feat_dim=temp_feat_dim,
         temp_context_seconds=temp_ctx_seconds,
         temp_context_causal=temp_ctx_causal,
+        use_vibration=use_vibration,
+        temp_cache_max_windows=(model_cfg.get("temp_only_max_windows_per_file", 32) if not use_vibration else None),
+        cache_dir=cfg.get("cache_dir"),
+        samples_per_file=int(cfg["train"].get("samples_per_file", 1)),
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_train"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
@@ -236,10 +284,21 @@ def main(cfg_path: str):
         temp_feat_dim=temp_feat_dim,
         temp_context_seconds=temp_ctx_seconds,
         temp_context_causal=temp_ctx_causal,
+        use_vibration=use_vibration,
+        temp_cache_max_windows=(model_cfg.get("temp_only_max_windows_per_file", 32) if not use_vibration else None),
+        cache_dir=cfg.get("cache_dir"),
+        samples_per_file=1,
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_val"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
     )
+
+    if use_temp:
+        configure_temp_normalization(cfg, train_ds, val_ds, temp_feat_fn)
+        # Persist train-fitted statistics in the run-local config. The source
+        # config remains declarative and never receives validation/test stats.
+        with open(os.path.join(cfg["log"]["out_dir"], "config.yaml"), "w", encoding="utf-8") as f:
+            yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
 
     pin_mem = torch.cuda.is_available()
     loader_generator = make_loader_seeders(cfg["train"]["seed"])
@@ -262,7 +321,7 @@ def main(cfg_path: str):
         cnt = Counter([it["label"] for it in train_ds.items])
         # inverse frequency per class
         inv = {k: (sum(cnt.values()) / max(1, v)) for k, v in cnt.items()}
-        weights = [inv[it["label"]] for it in train_ds.items]
+        weights = [inv[train_ds.items[i % len(train_ds.items)]["label"]] for i in range(len(train_ds))]
         weights = torch.tensor(weights, dtype=torch.double)
         sampler = WeightedRandomSampler(
             weights,
@@ -284,7 +343,14 @@ def main(cfg_path: str):
     )
 
     # Model
-    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=temp_feat_dim).to(device)
+    model = ResNet18Small(
+        in_ch=2,
+        num_classes=cfg["num_classes"],
+        temp_feat_dim=temp_feat_dim,
+        use_vibration=use_vibration,
+    ).to(device)
+    if channels_last:
+        model = model.to(memory_format=torch.channels_last)
     # Optional: initialize from a pretrained checkpoint for fine-tuning
     init_from = cfg["train"].get("init_from")
     if init_from:
@@ -347,7 +413,11 @@ def main(cfg_path: str):
         model.train()
         running = 0.0
         for xb, tb, yb in train_loader:
-            xb, tb, yb = xb.to(device), tb.to(device), yb.to(device)
+            xb = xb.to(device, non_blocking=True)
+            if channels_last:
+                xb = xb.contiguous(memory_format=torch.channels_last)
+            tb = tb.to(device, non_blocking=True)
+            yb = yb.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             stepped = False
             if use_amp and scaler is not None:
@@ -361,9 +431,14 @@ def main(cfg_path: str):
                     logits = model(xb, tb)
                     loss = loss_fn(logits, yb)
                 scaler.scale(loss).backward()
+                scale_before = scaler.get_scale()
                 scaler.step(optimizer)
-                stepped = True  # assume stepped; in rare overflow, PyTorch may skip internal step
                 scaler.update()
+                # GradScaler skips optimizer.step() when it detects non-finite
+                # gradients. Advance the per-batch scheduler only after a real
+                # optimizer update; otherwise PyTorch warns and the LR schedule
+                # becomes offset from the model updates.
+                stepped = scaler.get_scale() >= scale_before
             else:
                 logits = model(xb, tb)
                 loss = loss_fn(logits, yb)
@@ -382,6 +457,7 @@ def main(cfg_path: str):
                 batch_size=cfg["train"]["batch_size"], agg="mean",
                 max_windows=val_max_windows,
                 use_amp=use_amp and device.type == "cuda",
+                channels_last=channels_last,
             )
             metric = val_f1 if cfg["log"]["save_best_by"] == "macro_f1" else val_acc
             print(f"Epoch {epoch+1}/{cfg['train']['epochs']} | train_loss={tr_loss:.4f} | val_acc={val_acc:.4f} | val_f1={val_f1:.4f}")
@@ -401,6 +477,42 @@ def main(cfg_path: str):
             history.append((epoch + 1, float(tr_loss), float('nan'), float('nan')))
 
     print(f"Best model saved to: {best_path}")
+
+    # Save a file-level validation report for validation-only ablations. This
+    # deliberately does not instantiate or inspect the locked test split.
+    best_state = torch.load(best_path, map_location=device, weights_only=True)
+    model.load_state_dict(best_state["model"] if isinstance(best_state, dict) else best_state)
+    val_acc, val_f1, val_truth, val_pred = evaluate_filewise(
+        model,
+        val_ds,
+        device,
+        batch_size=cfg["train"]["batch_size"],
+        agg="mean",
+        max_windows=val_max_windows,
+        use_amp=use_amp and device.type == "cuda",
+        channels_last=channels_last,
+        return_predictions=True,
+    )
+    from sklearn.metrics import classification_report, confusion_matrix
+    class_names = [name for name, _ in sorted(LogsTTFDataset.CLASS_MAP.items(), key=lambda item: item[1])]
+    labels = list(range(len(class_names)))
+    report = classification_report(
+        val_truth,
+        val_pred,
+        labels=labels,
+        target_names=class_names,
+        digits=4,
+        zero_division=0,
+    )
+    with open(os.path.join(cfg["log"]["out_dir"], "validation_report.txt"), "w", encoding="utf-8") as f:
+        f.write(report + "\n")
+    np.savetxt(
+        os.path.join(cfg["log"]["out_dir"], "validation_confusion_matrix.csv"),
+        confusion_matrix(val_truth, val_pred, labels=labels),
+        fmt="%d",
+        delimiter=",",
+    )
+    print(f"Best validation checkpoint | val_acc={val_acc:.4f} | val_f1={val_f1:.4f}")
 
     # save history CSV and plot curves if matplotlib exists
     import csv

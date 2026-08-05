@@ -16,7 +16,7 @@ from sklearn.svm import SVC
 
 from datasets.logs_ttf import LogsTTFDataset
 
-from classical_baselines.features import resolve_feature_extractor
+from classical_baselines.features import feature_uses_full_signal, resolve_feature_extractor
 
 
 CLASS_NAMES = [None] * len(LogsTTFDataset.CLASS_MAP)
@@ -83,7 +83,17 @@ def make_windows(n: int, win: int, hop: int) -> List[Tuple[int, int]]:
     return out
 
 
-def read_signal_csv(path: str, max_rows: Optional[int] = None) -> np.ndarray:
+def read_signal_csv(path: str, max_rows: Optional[int] = None, cache_dir: Optional[str] = None) -> np.ndarray:
+    if cache_dir:
+        stem = os.path.splitext(os.path.basename(path))[0]
+        cache_path = os.path.join(cache_dir, f"{stem}.npy")
+        if os.path.isfile(cache_path):
+            arr = np.load(cache_path, mmap_mode="r")
+            if max_rows is not None and max_rows > 0:
+                arr = arr[: int(max_rows)]
+            if arr.ndim != 2 or arr.shape[1] < 2:
+                raise ValueError(f"Expected at least 2 signal columns in {cache_path}")
+            return arr
     kwargs = {"delimiter": ","}
     if max_rows is not None and max_rows > 0:
         kwargs["max_rows"] = int(max_rows)
@@ -101,14 +111,20 @@ def extract_window_features(
     feature_name: str,
     seconds_cap: Optional[float],
     sampling_rate: int,
+    cache_dir: Optional[str] = None,
+    max_windows: Optional[int] = None,
 ) -> np.ndarray:
     cap = int(seconds_cap * sampling_rate) if seconds_cap else None
-    arr = read_signal_csv(item["path"], max_rows=cap)
-    vib = arr[:, :2]
+    arr = read_signal_csv(item["path"], max_rows=cap, cache_dir=cache_dir)
+    source = arr if feature_uses_full_signal(feature_name) else arr[:, :2]
     extractor = resolve_feature_extractor(feature_name)
+    windows = make_windows(source.shape[0], win, hop)
+    if isinstance(max_windows, int) and max_windows > 0 and len(windows) > max_windows:
+        indices = np.linspace(0, len(windows) - 1, max_windows, dtype=int)
+        windows = [windows[index] for index in indices]
     feats = []
-    for s, e in make_windows(vib.shape[0], win, hop):
-        feats.append(extractor(vib[s:e]))
+    for s, e in windows:
+        feats.append(extractor(source[s:e]))
     if not feats:
         return np.zeros((0, 8), dtype=np.float32)
     return np.stack(feats, axis=0).astype(np.float32)
@@ -121,11 +137,12 @@ def build_training_matrix(cfg: dict, split: str, override_split_mode: str = None
     feature_name = cfg["classical"]["feature_name"]
     seconds_cap = (cfg.get("debug", {}) or {}).get("seconds_cap")
     sampling_rate = int(cfg["sampling_rate"])
+    cache_dir = cfg.get("cache_dir")
 
     x_all: List[np.ndarray] = []
     y_all: List[int] = []
     for item in items:
-        feats = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate)
+        feats = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate, cache_dir)
         if feats.size == 0:
             continue
         x_all.append(feats)
@@ -195,33 +212,44 @@ def _window_scores(model, X: np.ndarray) -> np.ndarray:
     return scores
 
 
-def evaluate_filewise(cfg: dict, model, split: str, override_split_mode: str = None) -> Tuple[List[int], List[int]]:
+def evaluate_filewise(cfg: dict, model, split: str, override_split_mode: str = None) -> Tuple[List[int], List[int], List[Dict]]:
     items = build_split_items(cfg, split, override_split_mode=override_split_mode)
     win = int(round(float(cfg["window_seconds"]) * int(cfg["sampling_rate"])))
     hop = int(round(float(cfg["hop_seconds"]) * int(cfg["sampling_rate"])))
     feature_name = cfg["classical"]["feature_name"]
     seconds_cap = (cfg.get("debug", {}) or {}).get("seconds_cap")
     sampling_rate = int(cfg["sampling_rate"])
+    cache_dir = cfg.get("cache_dir")
     agg = (cfg["classical"].get("aggregation", "mean_proba") or "mean_proba").strip().lower()
 
     ys: List[int] = []
     ps: List[int] = []
+    records: List[Dict] = []
     for item in items:
-        X = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate)
+        X = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate, cache_dir)
         if X.size == 0:
             continue
+        scores = _window_scores(model, X)
+        mean_scores = scores.mean(axis=0)
         if agg == "vote":
             pred_windows = model.predict(X)
             pred = int(np.bincount(pred_windows, minlength=len(CLASS_NAMES)).argmax())
         else:
-            scores = _window_scores(model, X)
-            pred = int(scores.mean(axis=0).argmax())
+            pred = int(mean_scores.argmax())
         ys.append(int(item["label"]))
         ps.append(pred)
-    return ys, ps
+        records.append({
+            "file_id": item["file"],
+            "ttf_percent": float(item.get("ttf_percent", np.nan)),
+            "y_true": int(item["label"]),
+            "y_pred": pred,
+            "n_windows": int(len(X)),
+            **{f"score_{j}": float(mean_scores[j]) for j in range(len(mean_scores))},
+        })
+    return ys, ps, records
 
 
-def save_artifacts(cfg: dict, model, ys: Sequence[int], ps: Sequence[int], split: str) -> None:
+def save_artifacts(cfg: dict, model, ys: Sequence[int], ps: Sequence[int], records: Sequence[Dict], split: str) -> None:
     out_dir = cfg["log"]["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
 
@@ -245,9 +273,9 @@ def save_artifacts(cfg: dict, model, ys: Sequence[int], ps: Sequence[int], split
 
     with open(os.path.join(out_dir, f"predictions_{split}.csv"), "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["y_true", "y_pred"])
-        for y, p in zip(ys, ps):
-            writer.writerow([int(y), int(p)])
+        writer.writerow(["file_id", "ttf_percent", "y_true", "y_pred", "n_windows", "score_0", "score_1", "score_2"])
+        for row in records:
+            writer.writerow([row[key] for key in ("file_id", "ttf_percent", "y_true", "y_pred", "n_windows", "score_0", "score_1", "score_2")])
 
 
 def train_and_eval(cfg: dict) -> None:
@@ -282,11 +310,10 @@ def train_and_eval(cfg: dict) -> None:
     model.fit(X_train, y_train)
 
     eval_split = cfg["classical"].get("eval_split", "test")
-    ys, ps = evaluate_filewise(cfg, model, split=eval_split, override_split_mode=eval_split_mode)
-    save_artifacts(cfg, model, ys, ps, split=eval_split)
+    ys, ps, records = evaluate_filewise(cfg, model, split=eval_split, override_split_mode=eval_split_mode)
+    save_artifacts(cfg, model, ys, ps, records, split=eval_split)
 
     classes_in_train = sorted(np.unique(y_train).tolist())
     print(f"Train windows: {len(X_train)}  |  classes seen: {[CLASS_NAMES[c] for c in classes_in_train]}")
     print(f"Eval files ({eval_split_mode}/{eval_split}): {len(ys)}")
     print(classification_report(ys, ps, target_names=CLASS_NAMES, digits=4, zero_division=0))
-

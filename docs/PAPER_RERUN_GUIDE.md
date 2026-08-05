@@ -6,9 +6,9 @@ Tài liệu này mô tả cách khuyến nghị để tái sinh artifact của p
 
 Nếu có sẵn, hãy dùng virtual environment của project:
 
-```powershell
-.venv\Scripts\Activate
-python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+```bash
+source .venv/bin/activate
+python3 -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
 Thiết lập được kỳ vọng cho lần đồng bộ paper hiện tại:
@@ -30,10 +30,9 @@ Các con số hiện tại trong paper giả định `auto_r22` là checkpoint s
 
 Nếu muốn chạy lại paper từ đầu, chỉ nên xóa output của `paper_sync`, không xóa các thí nghiệm cũ:
 
-```powershell
-Remove-Item -Recurse -Force runs\paper_sync -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force figures\temporal -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force figures\fullrange -ErrorAction SilentlyContinue
+```bash
+rm -rf runs/paper_sync
+rm -rf paper/figures/temporal paper/figures/fullrange
 ```
 
 Không được xóa `runs/logs_stft_strat/auto_r22`.
@@ -47,12 +46,12 @@ Quy trình nên dùng:
 3. Đánh giá lại temporal mean.
 4. Đánh giá lại full-range mean.
 5. Đánh giá lại full-range vote.
-6. Đồng bộ artifact đã chọn vào `figures/`.
+6. Đồng bộ artifact đã chọn vào `paper/figures/`.
 
 Chạy lệnh:
 
-```powershell
-python scripts/run_paper_sync.py --python .venv/Scripts/python.exe --sync-figures
+```bash
+python3 scripts/run_paper_sync.py --sync-figures
 ```
 
 Lệnh này dùng:
@@ -65,8 +64,8 @@ Lệnh này dùng:
 
 Nếu muốn có thêm một run stratified mới chỉ để đối chiếu:
 
-```powershell
-python scripts/run_paper_sync.py --python .venv/Scripts/python.exe --run-stratified --sync-figures
+```bash
+python3 scripts/run_paper_sync.py --run-stratified --sync-figures
 ```
 
 Lưu ý:
@@ -80,8 +79,8 @@ Nếu muốn chạy thủ công từng bước:
 
 ### 6.1 Fine-tune temporal
 
-```powershell
-python train_logs.py --config configs/best_temporal.yaml
+```bash
+python3 train_logs.py --config configs/best_temporal.yaml
 ```
 
 Output kỳ vọng:
@@ -90,8 +89,8 @@ Output kỳ vọng:
 
 ### 6.2 Đánh giá temporal mean
 
-```powershell
-python eval_logs.py --config configs/best_temporal.yaml --ckpt runs/paper_sync/temporal/best.pt
+```bash
+python3 eval_logs.py --config configs/best_temporal.yaml --ckpt runs/paper_sync/temporal/best.pt
 ```
 
 Output kỳ vọng:
@@ -100,8 +99,8 @@ Output kỳ vọng:
 
 ### 6.3 Đánh giá full-range mean
 
-```powershell
-python eval_logs.py --config configs/best_fullrange_eval.yaml --ckpt runs/paper_sync/temporal/best.pt
+```bash
+python3 eval_logs.py --config configs/best_fullrange_eval.yaml --ckpt runs/paper_sync/temporal/best.pt
 ```
 
 Output kỳ vọng:
@@ -110,8 +109,8 @@ Output kỳ vọng:
 
 ### 6.4 Đánh giá full-range vote
 
-```powershell
-python eval_logs.py --config configs/best_fullrange_eval.yaml --ckpt runs/paper_sync/temporal/best.pt --agg vote
+```bash
+python3 eval_logs.py --config configs/best_fullrange_eval.yaml --ckpt runs/paper_sync/temporal/best.pt --agg vote
 ```
 
 Output kỳ vọng:
@@ -120,29 +119,29 @@ Output kỳ vọng:
 
 ### 6.5 Đồng bộ figures đã chọn
 
-```powershell
-python scripts/run_paper_sync.py --python .venv/Scripts/python.exe --skip-train --sync-figures
+```bash
+python3 scripts/run_paper_sync.py --skip-train --sync-figures
 ```
 
 Lệnh này sẽ copy output đã chọn vào:
 
-- `figures/stratified`
-- `figures/temporal`
-- `figures/fullrange`
+- `paper/figures/stratified`
+- `paper/figures/temporal`
+- `paper/figures/fullrange`
 
 ## 7. Các con số chính kỳ vọng
 
 Sau khi sync thành công, kiểm tra:
 
-- `figures/temporal/report.txt`
+- `paper/figures/temporal/report.txt`
   - Accuracy `0.8974`
-- `figures/temporal/report_early_70_90.txt`
+- `paper/figures/temporal/report_early_70_90.txt`
   - Accuracy `0.8846`
   - F1 của `degrading` là `0.9388`
-- `figures/temporal/report_late_90_100.txt`
+- `paper/figures/temporal/report_late_90_100.txt`
   - Accuracy `0.9231`
   - F1 của `fault` là `0.9600`
-- `figures/fullrange/report.txt`
+- `paper/figures/fullrange/report.txt`
   - Accuracy `0.8915`
   - Macro-F1 `0.8739`
 

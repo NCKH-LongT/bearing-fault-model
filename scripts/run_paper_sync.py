@@ -24,11 +24,16 @@ def copy_if_exists(src: Path, dst: Path):
         shutil.copy2(src, dst)
 
 
-def sync_figures():
-    copy_if_exists(ROOT / "runs/logs_stft_strat/auto_r22/eval", ROOT / "figures/stratified")
-    copy_if_exists(ROOT / "runs/paper_sync/temporal/eval", ROOT / "figures/temporal")
+def require_file(path: Path, purpose: str):
+    if not path.is_file():
+        raise SystemExit(f"Missing {purpose}: {path.relative_to(ROOT)}")
 
-    fullrange_dir = ROOT / "figures/fullrange"
+
+def sync_figures():
+    copy_if_exists(ROOT / "runs/logs_stft_strat/auto_r22/eval", ROOT / "paper/figures/stratified")
+    copy_if_exists(ROOT / "runs/paper_sync/temporal/eval", ROOT / "paper/figures/temporal")
+
+    fullrange_dir = ROOT / "paper/figures/fullrange"
     fullrange_dir.mkdir(parents=True, exist_ok=True)
     copy_if_exists(ROOT / "runs/paper_sync/fullrange/eval_vote/report.txt", fullrange_dir / "report.txt")
     copy_if_exists(ROOT / "runs/paper_sync/fullrange/eval_vote/report_present.txt", fullrange_dir / "report_present.txt")
@@ -39,7 +44,11 @@ def sync_figures():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--python", default=str(ROOT / ".venv/Scripts/python.exe"))
+    ap.add_argument(
+        "--python",
+        default=sys.executable,
+        help="Python executable used for train/eval subprocesses (default: current interpreter).",
+    )
     ap.add_argument("--skip-train", action="store_true")
     ap.add_argument(
         "--run-stratified",
@@ -53,14 +62,22 @@ def main():
     strat_cfg = "configs/paper_sync_stratified.yaml"
     temporal_cfg = "configs/best_temporal.yaml"
     full_cfg = "configs/best_fullrange_eval.yaml"
+    temporal_ckpt = ROOT / "runs/paper_sync/temporal/best.pt"
+
+    require_file(ROOT / "data/manifest.csv", "dataset manifest")
 
     if args.run_stratified:
         run([py, "train_logs.py", "--config", strat_cfg])
         run([py, "eval_logs.py", "--config", strat_cfg, "--ckpt", "runs/paper_sync/stratified/best.pt"])
 
     if not args.skip_train:
+        require_file(
+            ROOT / "runs/logs_stft_strat/auto_r22/best.pt",
+            "canonical stratified initialization checkpoint",
+        )
         run([py, "train_logs.py", "--config", temporal_cfg])
 
+    require_file(temporal_ckpt, "trained temporal checkpoint")
     run([py, "eval_logs.py", "--config", temporal_cfg, "--ckpt", "runs/paper_sync/temporal/best.pt"])
     run([py, "eval_logs.py", "--config", full_cfg, "--ckpt", "runs/paper_sync/temporal/best.pt"])
     run([py, "eval_logs.py", "--config", full_cfg, "--ckpt", "runs/paper_sync/temporal/best.pt", "--agg", "vote"])

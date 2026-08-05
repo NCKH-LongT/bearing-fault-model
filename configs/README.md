@@ -12,6 +12,17 @@ Nếu cần một bộ chuẩn duy nhất để viết paper và chạy lại k�
 
 Ba file này là lớp chuẩn hóa cuối cùng dựa trên bộ run tốt nhất hiện đang được dùng cho paper.
 
+## Config cho revision mới
+
+- `revision_primary_multimodal.yaml`: primary file-wise held-out multi-class run, train từ đầu.
+- `revision_primary_vibration_only.yaml`: ablation vibration-only dùng cùng split và hyperparameter.
+- `revision_search_5060.yaml`: search multimodal tối ưu cho RTX 5060 Ti, chỉ chọn theo validation.
+- `revision_search_vibration_5060.yaml`: search độc lập cho vibration-only baseline.
+- `revision_temperature_only_validation.yaml`: MLP temperature-only 323 tham số, scaler fit trên train và chỉ đánh giá validation trong P1.
+- `revision_multimodal_normalized_validation.yaml`: winner multimodal cố định cộng scaler nhiệt fit trên train, chạy five-seed validation trong P1.
+
+Chạy các config revision qua `paper/run_revision.py`; artifact được ghi vào `runs/revision/`.
+
 ## Các config paper-sync nền
 
 Các file dưới đây vẫn hợp lệ và là nền để sinh bộ config chuẩn phía trên:

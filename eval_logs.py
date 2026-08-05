@@ -1,5 +1,6 @@
 import os
 import argparse
+import csv
 import yaml
 import numpy as np
 import torch
@@ -7,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from datasets.logs_ttf import LogsTTFDataset
 from features.spectrogram import SpectrogramTransform
-from features.temp_features import resolve_temp_feature
+from features.temp_features import StandardizedTempFeature, resolve_temp_feature
 from models.resnet2d import ResNet18Small
 
 try:
@@ -16,8 +17,8 @@ except Exception:  # matplotlib may be missing; plotting will be skipped
     plt = None
 
 
-def evaluate_filewise(ds, model, device, batch_size=32, agg="mean"):
-    ys, ps = [], []
+def evaluate_filewise(ds, model, device, batch_size=32, agg="mean", channels_last=False, use_amp=False):
+    ys, ps, records = [], [], []
     with torch.no_grad():
         for i in range(len(ds)):
             X, T, y = ds.get_all_windows(i)
@@ -25,17 +26,35 @@ def evaluate_filewise(ds, model, device, batch_size=32, agg="mean"):
             outs = []
             n = X.shape[0]
             for s in range(0, n, batch_size):
-                xb = X[s:s+batch_size].to(device)
-                tb = T[s:s+batch_size].to(device)
-                lb = model(xb, tb)
+                xb = X[s:s+batch_size].to(device, non_blocking=True)
+                if channels_last:
+                    xb = xb.contiguous(memory_format=torch.channels_last)
+                tb = T[s:s+batch_size].to(device, non_blocking=True)
+                if use_amp and device.type == "cuda":
+                    with torch.amp.autocast("cuda"):
+                        lb = model(xb, tb)
+                else:
+                    lb = model(xb, tb)
                 outs.append(lb.cpu())
             logits = torch.cat(outs, dim=0)
+            mean_logits = logits.mean(0)
+            probabilities = torch.softmax(mean_logits, dim=0)
             if agg == "mean":
-                pred = int(logits.mean(0).argmax().item())
+                pred = int(mean_logits.argmax().item())
             else:
                 pred = int(np.bincount(logits.argmax(1).numpy()).argmax())
             ys.append(y)
             ps.append(pred)
+            item = ds.items[i]
+            records.append({
+                "file_id": item["file"],
+                "ttf_percent": float(item.get("ttf_percent", np.nan)),
+                "y_true": y,
+                "y_pred": pred,
+                "n_windows": int(n),
+                **{f"logit_{j}": float(mean_logits[j].item()) for j in range(len(mean_logits))},
+                **{f"prob_{j}": float(probabilities[j].item()) for j in range(len(probabilities))},
+            })
     from sklearn.metrics import classification_report, confusion_matrix
     print(classification_report(ys, ps, digits=4, zero_division=0))
     try:
@@ -43,14 +62,21 @@ def evaluate_filewise(ds, model, device, batch_size=32, agg="mean"):
         print(confusion_matrix(ys, ps, labels=labels_all))
     except Exception:
         print(confusion_matrix(ys, ps))
-    return ys, ps
+    return ys, ps, records
 
 
 def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
     with open(cfg_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    perf_cfg = cfg.get("performance", {}) or {}
+    channels_last = bool(perf_cfg.get("channels_last", False)) and device.type == "cuda"
+    allow_tf32 = bool(perf_cfg.get("allow_tf32", True))
     if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+        torch.backends.cudnn.allow_tf32 = allow_tf32
+        if allow_tf32:
+            torch.set_float32_matmul_precision("high")
         try:
             torch.backends.cudnn.benchmark = True
             print(f"Using GPU: {torch.cuda.get_device_name(0)}")
@@ -78,6 +104,7 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
 
     model_cfg = cfg.get("model", {}) or {}
     use_temp = bool(model_cfg.get("use_temp", True))
+    use_vibration = bool(model_cfg.get("use_vibration", True))
     temp_feat_fn = None
     temp_feat_dim = 0
     temp_ctx_seconds = None
@@ -86,6 +113,11 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         temp_cfg = model_cfg.get("temp_feature", {}) or {}
         temp_type = temp_cfg.get("type", "stats6")
         temp_feat_fn, temp_feat_dim = resolve_temp_feature(temp_type)
+        norm_cfg = temp_cfg.get("normalization", {}) or {}
+        if bool(norm_cfg.get("enabled", False)):
+            if norm_cfg.get("mean") is None or norm_cfg.get("std") is None:
+                raise ValueError("Run-local config lacks train-fitted temperature normalization stats")
+            temp_feat_fn = StandardizedTempFeature(temp_feat_fn, norm_cfg["mean"], norm_cfg["std"])
         temp_ctx_seconds = temp_cfg.get("context_seconds")
         temp_ctx_seconds = float(temp_ctx_seconds) if temp_ctx_seconds is not None else None
         temp_ctx_causal = bool(temp_cfg.get("causal", True))
@@ -108,6 +140,10 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         temp_feat_dim=temp_feat_dim,
         temp_context_seconds=temp_ctx_seconds,
         temp_context_causal=temp_ctx_causal,
+        use_vibration=use_vibration,
+        temp_cache_max_windows=(model_cfg.get("temp_only_max_windows_per_file", 32) if not use_vibration else None),
+        cache_dir=cfg.get("cache_dir"),
+        samples_per_file=1,
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_test"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
@@ -121,20 +157,46 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         pin_memory=pin_mem,
     )
 
-    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=temp_feat_dim)
+    model = ResNet18Small(
+        in_ch=2,
+        num_classes=cfg["num_classes"],
+        temp_feat_dim=temp_feat_dim,
+        use_vibration=use_vibration,
+    )
     # Safe, forward-compatible load: prefer weights_only and accept both formats
     state = torch.load(ckpt_path, map_location=device, weights_only=True)
     sd = state["model"] if isinstance(state, dict) and "model" in state else state
     model.load_state_dict(sd)
     model.to(device)
+    if channels_last:
+        model = model.to(memory_format=torch.channels_last)
 
     print(f"Test set report (file-wise, {agg}-agg):")
-    ys, ps = evaluate_filewise(test_ds, model, device, batch_size=cfg["train"]["batch_size"], agg=agg)
+    ys, ps, prediction_records = evaluate_filewise(
+        test_ds,
+        model,
+        device,
+        batch_size=cfg["train"]["batch_size"],
+        agg=agg,
+        channels_last=channels_last,
+        use_amp=bool(cfg["train"].get("use_amp", True)),
+    )
 
     # Keep mean-agg in the legacy eval directory; store alternatives separately.
     eval_dir_name = "eval" if agg == "mean" else f"eval_{agg}"
     out_dir = os.path.join(cfg["log"]["out_dir"], eval_dir_name)
     os.makedirs(out_dir, exist_ok=True)
+
+    prediction_path = os.path.join(out_dir, "predictions_file.csv")
+    with open(prediction_path, "w", newline="", encoding="utf-8") as stream:
+        fieldnames = [
+            "file_id", "ttf_percent", "y_true", "y_pred", "n_windows",
+            "logit_0", "logit_1", "logit_2", "prob_0", "prob_1", "prob_2",
+        ]
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(prediction_records)
+    print(f"Saved file-level predictions: {prediction_path}")
 
     # Save textual report and confusion matrix values
     from sklearn.metrics import classification_report, confusion_matrix, f1_score

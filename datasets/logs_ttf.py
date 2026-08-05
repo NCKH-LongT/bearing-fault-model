@@ -43,12 +43,18 @@ class LogsTTFDataset(Dataset):
         temp_feat_dim: Optional[int] = None,
         temp_context_seconds: Optional[float] = None,
         temp_context_causal: bool = True,
+        use_vibration: bool = True,
+        temp_cache_max_windows: Optional[int] = None,
+        cache_dir: Optional[str] = None,
+        samples_per_file: int = 1,
         limit_files: Optional[int] = None,
         seconds_cap: Optional[float] = None,
     ):
         assert split in {"train", "val", "test"}
         self.data_dir = data_dir
         self.transform = transform
+        self.use_vibration = bool(use_vibration)
+        self.temp_cache_max_windows = int(temp_cache_max_windows) if temp_cache_max_windows else None
         self.temp_feature_fn = temp_feature_fn
         if temp_feat_dim is None:
             self.temp_feat_dim = 6 if self.temp_feature_fn else 0
@@ -60,6 +66,8 @@ class LogsTTFDataset(Dataset):
 
         self.seconds_cap = seconds_cap
         self.temp_context_causal = bool(temp_context_causal)
+        self.cache_dir = cache_dir
+        self.samples_per_file = max(1, int(samples_per_file))
         if temp_context_seconds is None:
             self.temp_context = 0
         else:
@@ -245,7 +253,7 @@ class LogsTTFDataset(Dataset):
         return items
 
     def __len__(self) -> int:
-        return len(self.items)
+        return len(self.items) * self.samples_per_file
 
     @staticmethod
     @lru_cache(maxsize=128)
@@ -255,6 +263,36 @@ class LogsTTFDataset(Dataset):
         if max_rows_key is not None and max_rows_key >= 0:
             kwargs["max_rows"] = int(max_rows_key)
         return np.loadtxt(path, **kwargs)
+
+    def _read_signal(self, path: str, max_rows_key: Optional[int]) -> np.ndarray:
+        """Read a signal from an optional float32 NPY mmap cache, falling back to CSV."""
+        if self.cache_dir:
+            stem = os.path.splitext(os.path.basename(path))[0]
+            cache_path = os.path.join(self.cache_dir, f"{stem}.npy")
+            if os.path.isfile(cache_path):
+                arr = np.load(cache_path, mmap_mode="r")
+                if max_rows_key is not None and max_rows_key >= 0:
+                    return arr[: int(max_rows_key)]
+                return arr
+        return self._read_csv_cached(path, max_rows_key)
+
+    @lru_cache(maxsize=256)
+    def _read_temp_features_cached(self, path: str, max_rows_key: int) -> np.ndarray:
+        """Materialize small per-window temperature descriptors once per worker/file."""
+        arr = self._read_signal(path, max_rows_key)
+        temp = arr[:, 2:4]
+        windows = self._make_windows(len(arr))
+        if not windows:
+            raise IndexError(f"File too short for window: {path}")
+        if self.temp_cache_max_windows and len(windows) > self.temp_cache_max_windows:
+            indices = np.linspace(0, len(windows) - 1, self.temp_cache_max_windows, dtype=int)
+            windows = [windows[index] for index in indices]
+        if self.temp_feature_fn is None:
+            return np.zeros((len(windows), self.temp_feat_dim), dtype=np.float32)
+        return np.stack([
+            self.temp_feature_fn(np.asarray(self._slice_temp_context(temp, s, e), dtype=np.float32))
+            for s, e in windows
+        ]).astype(np.float32)
 
     def _make_windows(self, n: int) -> List[Tuple[int, int]]:
         idx = []
@@ -267,13 +305,27 @@ class LogsTTFDataset(Dataset):
         return idx
 
     def __getitem__(self, i: int):
+        if not self.items:
+            raise IndexError("Dataset is empty")
+        i = int(i) % len(self.items)
         item = self.items[i]
         cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
         cap_key = int(cap) if cap is not None else -1
-        arr = self._read_csv_cached(item["path"], cap_key)  # (N,4)
+        if not self.use_vibration:
+            features = self._read_temp_features_cached(item["path"], cap_key)
+            if self.transform and hasattr(self.transform, "training") and self.transform.training:
+                feature_index = np.random.randint(0, len(features))
+            else:
+                feature_index = 0
+            return (
+                torch.zeros((1, 1, 1), dtype=torch.float32),
+                torch.tensor(features[feature_index], dtype=torch.float32),
+                torch.tensor(item["label"], dtype=torch.long),
+            )
+        arr = self._read_signal(item["path"], cap_key)  # (N,4)
         # split channels
-        vib = arr[:, :2].astype(np.float32)  # (N,2)
-        temp = arr[:, 2:].astype(np.float32)  # (N,2)
+        vib = arr[:, :2]  # view/mmap, (N,2)
+        temp = arr[:, 2:4]  # view/mmap, (N,2)
 
         windows = self._make_windows(vib.shape[0])
         if not windows:
@@ -285,11 +337,14 @@ class LogsTTFDataset(Dataset):
         else:
             widx = 0
         s, e = windows[widx]
-        vib_w = vib[s:e]  # (win,2)
-        temp_w = self._slice_temp_context(temp, s, e)  # (ctx,2) or (win,2)
+        temp_w = np.asarray(self._slice_temp_context(temp, s, e), dtype=np.float32)  # (ctx,2) or (win,2)
 
         # Apply transform for vibration (e.g., STFT -> 2xFxT)
-        x = self.transform(vib_w) if self.transform else vib_w
+        if self.use_vibration:
+            vib_w = np.asarray(vib[s:e], dtype=np.float32)  # (win,2)
+            x = self.transform(vib_w) if self.transform else torch.tensor(vib_w)
+        else:
+            x = torch.zeros((1, 1, 1), dtype=torch.float32)
 
         # Temperature features per window
         if self.temp_feature_fn:
@@ -305,16 +360,27 @@ class LogsTTFDataset(Dataset):
         item = self.items[i]
         cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
         cap_key = int(cap) if cap is not None else -1
-        arr = self._read_csv_cached(item["path"], cap_key)  # (N,4)
-        vib = arr[:, :2].astype(np.float32)
-        temp = arr[:, 2:].astype(np.float32)
+        if not self.use_vibration:
+            features = self._read_temp_features_cached(item["path"], cap_key)
+            count = len(features)
+            return (
+                torch.zeros((count, 1, 1, 1), dtype=torch.float32),
+                torch.tensor(features, dtype=torch.float32),
+                torch.tensor(item["label"], dtype=torch.long),
+            )
+        arr = self._read_signal(item["path"], cap_key)  # (N,4)
+        vib = arr[:, :2]
+        temp = arr[:, 2:4]
         windows = self._make_windows(vib.shape[0])
         X = []
         T = []
         for s, e in windows:
-            vib_w = vib[s:e]
-            temp_w = self._slice_temp_context(temp, s, e)
-            x = self.transform(vib_w) if self.transform else vib_w
+            temp_w = np.asarray(self._slice_temp_context(temp, s, e), dtype=np.float32)
+            if self.use_vibration:
+                vib_w = np.asarray(vib[s:e], dtype=np.float32)
+                x = self.transform(vib_w) if self.transform else torch.tensor(vib_w)
+            else:
+                x = torch.zeros((1, 1, 1), dtype=torch.float32)
             if self.temp_feature_fn:
                 t = self.temp_feature_fn(temp_w)
             else:
@@ -327,3 +393,21 @@ class LogsTTFDataset(Dataset):
         T = torch.tensor(np.stack(T, axis=0), dtype=torch.float32)  # (W,D)
         y = torch.tensor(item["label"], dtype=torch.long)
         return X, T, y
+
+    def get_all_temp_features(self, i: int, max_windows: Optional[int] = None) -> np.ndarray:
+        """Return raw temperature descriptors without computing vibration STFT."""
+        if self.temp_feature_fn is None:
+            return np.empty((0, self.temp_feat_dim), dtype=np.float32)
+        item = self.items[i]
+        cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
+        cap_key = int(cap) if cap is not None else -1
+        arr = self._read_signal(item["path"], cap_key)
+        temp = arr[:, 2:4]
+        windows = self._make_windows(len(arr))
+        if isinstance(max_windows, int) and max_windows > 0 and len(windows) > max_windows:
+            indices = np.linspace(0, len(windows) - 1, max_windows, dtype=int)
+            windows = [windows[index] for index in indices]
+        return np.stack([
+            self.temp_feature_fn(np.asarray(self._slice_temp_context(temp, s, e), dtype=np.float32))
+            for s, e in windows
+        ]).astype(np.float32)

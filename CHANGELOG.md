@@ -7,14 +7,13 @@ Highlights
 - Add temporal full-range (0–100.1%) results (mean and vote) with figures and a summary table.
 - Copy evaluated figures under `figures/` for Overleaf sync (temporal, temporal_alltest, ablation sets).
 - Add r49-aligned ablation configs: vib-only, no class-weights, high-res.
-- Add drafts/related_and_results_r49.md with concise Related Works + Results text.
+- Add `old/stale_docs/drafts/related_and_results_r49.md` with concise Related Works + Results text (now archived).
 
 Notable paths
 - Configs: `configs/exp_r49*.yaml`
 - Figures: `figures/temporal/*`, `figures/temporal_alltest/*`, `figures/ablation/*`
 - Paper: `main.tex`
-- Draft: `drafts/related_and_results_r49.md`
+- Draft: `old/stale_docs/drafts/related_and_results_r49.md`
 
 Tag
 - Git tag: `v0.1-paper-sync`
-
