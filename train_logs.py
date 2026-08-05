@@ -82,6 +82,7 @@ def evaluate_filewise(
     agg: str = "mean",
     max_windows: Optional[int] = None,
     use_amp: bool = False,
+    channels_last: bool = False,
 ):
     """Evaluate by aggregating all windows per file (mean logit or majority-vote)."""
     model.eval()
@@ -103,8 +104,10 @@ def evaluate_filewise(
             logits_all = []
             n = X.shape[0]
             for s in range(0, n, batch_size):
-                xb = X[s:s+batch_size].to(device)
-                tb = T[s:s+batch_size].to(device)
+                xb = X[s:s+batch_size].to(device, non_blocking=True)
+                if channels_last:
+                    xb = xb.contiguous(memory_format=torch.channels_last)
+                tb = T[s:s+batch_size].to(device, non_blocking=True)
                 if use_amp:
                     try:
                         from torch.amp import autocast
@@ -143,7 +146,14 @@ def main(cfg_path: str):
         yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    perf_cfg = cfg.get("performance", {}) or {}
+    channels_last = bool(perf_cfg.get("channels_last", False)) and device.type == "cuda"
+    allow_tf32 = bool(perf_cfg.get("allow_tf32", True))
     if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+        torch.backends.cudnn.allow_tf32 = allow_tf32
+        if allow_tf32:
+            torch.set_float32_matmul_precision("high")
         try:
             gpu_name = torch.cuda.get_device_name(0)
             print(f"Using GPU: {gpu_name}")
@@ -214,6 +224,8 @@ def main(cfg_path: str):
         temp_feat_dim=temp_feat_dim,
         temp_context_seconds=temp_ctx_seconds,
         temp_context_causal=temp_ctx_causal,
+        cache_dir=cfg.get("cache_dir"),
+        samples_per_file=int(cfg["train"].get("samples_per_file", 1)),
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_train"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
@@ -236,6 +248,8 @@ def main(cfg_path: str):
         temp_feat_dim=temp_feat_dim,
         temp_context_seconds=temp_ctx_seconds,
         temp_context_causal=temp_ctx_causal,
+        cache_dir=cfg.get("cache_dir"),
+        samples_per_file=1,
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_val"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
@@ -262,7 +276,7 @@ def main(cfg_path: str):
         cnt = Counter([it["label"] for it in train_ds.items])
         # inverse frequency per class
         inv = {k: (sum(cnt.values()) / max(1, v)) for k, v in cnt.items()}
-        weights = [inv[it["label"]] for it in train_ds.items]
+        weights = [inv[train_ds.items[i % len(train_ds.items)]["label"]] for i in range(len(train_ds))]
         weights = torch.tensor(weights, dtype=torch.double)
         sampler = WeightedRandomSampler(
             weights,
@@ -285,6 +299,8 @@ def main(cfg_path: str):
 
     # Model
     model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=temp_feat_dim).to(device)
+    if channels_last:
+        model = model.to(memory_format=torch.channels_last)
     # Optional: initialize from a pretrained checkpoint for fine-tuning
     init_from = cfg["train"].get("init_from")
     if init_from:
@@ -347,7 +363,11 @@ def main(cfg_path: str):
         model.train()
         running = 0.0
         for xb, tb, yb in train_loader:
-            xb, tb, yb = xb.to(device), tb.to(device), yb.to(device)
+            xb = xb.to(device, non_blocking=True)
+            if channels_last:
+                xb = xb.contiguous(memory_format=torch.channels_last)
+            tb = tb.to(device, non_blocking=True)
+            yb = yb.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             stepped = False
             if use_amp and scaler is not None:
@@ -361,9 +381,14 @@ def main(cfg_path: str):
                     logits = model(xb, tb)
                     loss = loss_fn(logits, yb)
                 scaler.scale(loss).backward()
+                scale_before = scaler.get_scale()
                 scaler.step(optimizer)
-                stepped = True  # assume stepped; in rare overflow, PyTorch may skip internal step
                 scaler.update()
+                # GradScaler skips optimizer.step() when it detects non-finite
+                # gradients. Advance the per-batch scheduler only after a real
+                # optimizer update; otherwise PyTorch warns and the LR schedule
+                # becomes offset from the model updates.
+                stepped = scaler.get_scale() >= scale_before
             else:
                 logits = model(xb, tb)
                 loss = loss_fn(logits, yb)
@@ -382,6 +407,7 @@ def main(cfg_path: str):
                 batch_size=cfg["train"]["batch_size"], agg="mean",
                 max_windows=val_max_windows,
                 use_amp=use_amp and device.type == "cuda",
+                channels_last=channels_last,
             )
             metric = val_f1 if cfg["log"]["save_best_by"] == "macro_f1" else val_acc
             print(f"Epoch {epoch+1}/{cfg['train']['epochs']} | train_loss={tr_loss:.4f} | val_acc={val_acc:.4f} | val_f1={val_f1:.4f}")

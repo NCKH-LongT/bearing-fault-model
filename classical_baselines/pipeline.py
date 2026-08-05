@@ -83,7 +83,17 @@ def make_windows(n: int, win: int, hop: int) -> List[Tuple[int, int]]:
     return out
 
 
-def read_signal_csv(path: str, max_rows: Optional[int] = None) -> np.ndarray:
+def read_signal_csv(path: str, max_rows: Optional[int] = None, cache_dir: Optional[str] = None) -> np.ndarray:
+    if cache_dir:
+        stem = os.path.splitext(os.path.basename(path))[0]
+        cache_path = os.path.join(cache_dir, f"{stem}.npy")
+        if os.path.isfile(cache_path):
+            arr = np.load(cache_path, mmap_mode="r")
+            if max_rows is not None and max_rows > 0:
+                arr = arr[: int(max_rows)]
+            if arr.ndim != 2 or arr.shape[1] < 2:
+                raise ValueError(f"Expected at least 2 signal columns in {cache_path}")
+            return arr
     kwargs = {"delimiter": ","}
     if max_rows is not None and max_rows > 0:
         kwargs["max_rows"] = int(max_rows)
@@ -101,9 +111,10 @@ def extract_window_features(
     feature_name: str,
     seconds_cap: Optional[float],
     sampling_rate: int,
+    cache_dir: Optional[str] = None,
 ) -> np.ndarray:
     cap = int(seconds_cap * sampling_rate) if seconds_cap else None
-    arr = read_signal_csv(item["path"], max_rows=cap)
+    arr = read_signal_csv(item["path"], max_rows=cap, cache_dir=cache_dir)
     vib = arr[:, :2]
     extractor = resolve_feature_extractor(feature_name)
     feats = []
@@ -121,11 +132,12 @@ def build_training_matrix(cfg: dict, split: str, override_split_mode: str = None
     feature_name = cfg["classical"]["feature_name"]
     seconds_cap = (cfg.get("debug", {}) or {}).get("seconds_cap")
     sampling_rate = int(cfg["sampling_rate"])
+    cache_dir = cfg.get("cache_dir")
 
     x_all: List[np.ndarray] = []
     y_all: List[int] = []
     for item in items:
-        feats = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate)
+        feats = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate, cache_dir)
         if feats.size == 0:
             continue
         x_all.append(feats)
@@ -202,12 +214,13 @@ def evaluate_filewise(cfg: dict, model, split: str, override_split_mode: str = N
     feature_name = cfg["classical"]["feature_name"]
     seconds_cap = (cfg.get("debug", {}) or {}).get("seconds_cap")
     sampling_rate = int(cfg["sampling_rate"])
+    cache_dir = cfg.get("cache_dir")
     agg = (cfg["classical"].get("aggregation", "mean_proba") or "mean_proba").strip().lower()
 
     ys: List[int] = []
     ps: List[int] = []
     for item in items:
-        X = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate)
+        X = extract_window_features(item, win, hop, feature_name, seconds_cap, sampling_rate, cache_dir)
         if X.size == 0:
             continue
         if agg == "vote":
@@ -289,4 +302,3 @@ def train_and_eval(cfg: dict) -> None:
     print(f"Train windows: {len(X_train)}  |  classes seen: {[CLASS_NAMES[c] for c in classes_in_train]}")
     print(f"Eval files ({eval_split_mode}/{eval_split}): {len(ys)}")
     print(classification_report(ys, ps, target_names=CLASS_NAMES, digits=4, zero_division=0))
-

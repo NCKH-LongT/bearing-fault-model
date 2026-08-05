@@ -16,7 +16,7 @@ except Exception:  # matplotlib may be missing; plotting will be skipped
     plt = None
 
 
-def evaluate_filewise(ds, model, device, batch_size=32, agg="mean"):
+def evaluate_filewise(ds, model, device, batch_size=32, agg="mean", channels_last=False, use_amp=False):
     ys, ps = [], []
     with torch.no_grad():
         for i in range(len(ds)):
@@ -25,9 +25,15 @@ def evaluate_filewise(ds, model, device, batch_size=32, agg="mean"):
             outs = []
             n = X.shape[0]
             for s in range(0, n, batch_size):
-                xb = X[s:s+batch_size].to(device)
-                tb = T[s:s+batch_size].to(device)
-                lb = model(xb, tb)
+                xb = X[s:s+batch_size].to(device, non_blocking=True)
+                if channels_last:
+                    xb = xb.contiguous(memory_format=torch.channels_last)
+                tb = T[s:s+batch_size].to(device, non_blocking=True)
+                if use_amp and device.type == "cuda":
+                    with torch.amp.autocast("cuda"):
+                        lb = model(xb, tb)
+                else:
+                    lb = model(xb, tb)
                 outs.append(lb.cpu())
             logits = torch.cat(outs, dim=0)
             if agg == "mean":
@@ -50,7 +56,14 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
     with open(cfg_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    perf_cfg = cfg.get("performance", {}) or {}
+    channels_last = bool(perf_cfg.get("channels_last", False)) and device.type == "cuda"
+    allow_tf32 = bool(perf_cfg.get("allow_tf32", True))
     if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+        torch.backends.cudnn.allow_tf32 = allow_tf32
+        if allow_tf32:
+            torch.set_float32_matmul_precision("high")
         try:
             torch.backends.cudnn.benchmark = True
             print(f"Using GPU: {torch.cuda.get_device_name(0)}")
@@ -108,6 +121,8 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         temp_feat_dim=temp_feat_dim,
         temp_context_seconds=temp_ctx_seconds,
         temp_context_causal=temp_ctx_causal,
+        cache_dir=cfg.get("cache_dir"),
+        samples_per_file=1,
         exclude_list=cfg.get("exclude_list"),
         limit_files=cfg.get("debug", {}).get("limit_files_test"),
         seconds_cap=cfg.get("debug", {}).get("seconds_cap"),
@@ -127,9 +142,19 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
     sd = state["model"] if isinstance(state, dict) and "model" in state else state
     model.load_state_dict(sd)
     model.to(device)
+    if channels_last:
+        model = model.to(memory_format=torch.channels_last)
 
     print(f"Test set report (file-wise, {agg}-agg):")
-    ys, ps = evaluate_filewise(test_ds, model, device, batch_size=cfg["train"]["batch_size"], agg=agg)
+    ys, ps = evaluate_filewise(
+        test_ds,
+        model,
+        device,
+        batch_size=cfg["train"]["batch_size"],
+        agg=agg,
+        channels_last=channels_last,
+        use_amp=bool(cfg["train"].get("use_amp", True)),
+    )
 
     # Keep mean-agg in the legacy eval directory; store alternatives separately.
     eval_dir_name = "eval" if agg == "mean" else f"eval_{agg}"

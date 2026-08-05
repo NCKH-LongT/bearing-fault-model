@@ -151,7 +151,7 @@ def main():
     ap.add_argument("--eval_rel", default=os.path.join("eval", "report.txt"), help="Đường dẫn con tới report.txt")
     ap.add_argument("--out_csv", default=os.path.join("figures", "ablation_per_run.csv"))
     ap.add_argument("--out_group_csv", default=os.path.join("figures", "ablation_group_summary.csv"))
-    ap.add_argument("--out_md", default=os.path.join("figures", "ablation_summary.md"))
+    ap.add_argument("--out_md", default=os.path.join("paper", "figures", "ablation_summary.md"))
     args = ap.parse_args()
 
     rows = scan_runs(args.base_dir, args.pattern, args.eval_rel)
@@ -190,4 +190,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

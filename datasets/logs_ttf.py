@@ -43,6 +43,8 @@ class LogsTTFDataset(Dataset):
         temp_feat_dim: Optional[int] = None,
         temp_context_seconds: Optional[float] = None,
         temp_context_causal: bool = True,
+        cache_dir: Optional[str] = None,
+        samples_per_file: int = 1,
         limit_files: Optional[int] = None,
         seconds_cap: Optional[float] = None,
     ):
@@ -60,6 +62,8 @@ class LogsTTFDataset(Dataset):
 
         self.seconds_cap = seconds_cap
         self.temp_context_causal = bool(temp_context_causal)
+        self.cache_dir = cache_dir
+        self.samples_per_file = max(1, int(samples_per_file))
         if temp_context_seconds is None:
             self.temp_context = 0
         else:
@@ -245,7 +249,7 @@ class LogsTTFDataset(Dataset):
         return items
 
     def __len__(self) -> int:
-        return len(self.items)
+        return len(self.items) * self.samples_per_file
 
     @staticmethod
     @lru_cache(maxsize=128)
@@ -255,6 +259,18 @@ class LogsTTFDataset(Dataset):
         if max_rows_key is not None and max_rows_key >= 0:
             kwargs["max_rows"] = int(max_rows_key)
         return np.loadtxt(path, **kwargs)
+
+    def _read_signal(self, path: str, max_rows_key: Optional[int]) -> np.ndarray:
+        """Read a signal from an optional float32 NPY mmap cache, falling back to CSV."""
+        if self.cache_dir:
+            stem = os.path.splitext(os.path.basename(path))[0]
+            cache_path = os.path.join(self.cache_dir, f"{stem}.npy")
+            if os.path.isfile(cache_path):
+                arr = np.load(cache_path, mmap_mode="r")
+                if max_rows_key is not None and max_rows_key >= 0:
+                    return arr[: int(max_rows_key)]
+                return arr
+        return self._read_csv_cached(path, max_rows_key)
 
     def _make_windows(self, n: int) -> List[Tuple[int, int]]:
         idx = []
@@ -267,13 +283,16 @@ class LogsTTFDataset(Dataset):
         return idx
 
     def __getitem__(self, i: int):
+        if not self.items:
+            raise IndexError("Dataset is empty")
+        i = int(i) % len(self.items)
         item = self.items[i]
         cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
         cap_key = int(cap) if cap is not None else -1
-        arr = self._read_csv_cached(item["path"], cap_key)  # (N,4)
+        arr = self._read_signal(item["path"], cap_key)  # (N,4)
         # split channels
-        vib = arr[:, :2].astype(np.float32)  # (N,2)
-        temp = arr[:, 2:].astype(np.float32)  # (N,2)
+        vib = arr[:, :2]  # view/mmap, (N,2)
+        temp = arr[:, 2:4]  # view/mmap, (N,2)
 
         windows = self._make_windows(vib.shape[0])
         if not windows:
@@ -285,8 +304,8 @@ class LogsTTFDataset(Dataset):
         else:
             widx = 0
         s, e = windows[widx]
-        vib_w = vib[s:e]  # (win,2)
-        temp_w = self._slice_temp_context(temp, s, e)  # (ctx,2) or (win,2)
+        vib_w = np.asarray(vib[s:e], dtype=np.float32)  # (win,2)
+        temp_w = np.asarray(self._slice_temp_context(temp, s, e), dtype=np.float32)  # (ctx,2) or (win,2)
 
         # Apply transform for vibration (e.g., STFT -> 2xFxT)
         x = self.transform(vib_w) if self.transform else vib_w
@@ -305,15 +324,15 @@ class LogsTTFDataset(Dataset):
         item = self.items[i]
         cap = int(self.seconds_cap * self.sampling_rate) if self.seconds_cap else None
         cap_key = int(cap) if cap is not None else -1
-        arr = self._read_csv_cached(item["path"], cap_key)  # (N,4)
-        vib = arr[:, :2].astype(np.float32)
-        temp = arr[:, 2:].astype(np.float32)
+        arr = self._read_signal(item["path"], cap_key)  # (N,4)
+        vib = arr[:, :2]
+        temp = arr[:, 2:4]
         windows = self._make_windows(vib.shape[0])
         X = []
         T = []
         for s, e in windows:
-            vib_w = vib[s:e]
-            temp_w = self._slice_temp_context(temp, s, e)
+            vib_w = np.asarray(vib[s:e], dtype=np.float32)
+            temp_w = np.asarray(self._slice_temp_context(temp, s, e), dtype=np.float32)
             x = self.transform(vib_w) if self.transform else vib_w
             if self.temp_feature_fn:
                 t = self.temp_feature_fn(temp_w)

@@ -17,10 +17,13 @@ Repository này chứa một pipeline đa phương thức gọn nhẹ cho bài t
 - `features/`: biến đổi STFT và trích xuất đặc trưng nhiệt độ.
 - `models/`: mô hình ResNet2D nhỏ có ghép nhánh nhiệt độ.
 - `runs/`: nơi lưu output, checkpoint và các kết quả đánh giá.
-- `figures/`: các figure và report đã chọn để dùng cho paper.
+- `paper/`: mã nguồn LaTeX, bibliography, Springer style và các figure/report của bài báo.
+- `paper/run_revision.py`: runner từng bước cho audit, primary revision, baseline và build LaTeX.
+- `paper/REVISION_STEP_BY_STEP.md`: hướng dẫn chạy lại revision theo từng bước.
+- `paper/RTX5060_CONTINUOUS_SEARCH_GUIDE.md`: cache dữ liệu, chạy validation search liên tục và xác nhận 5 seed trên RTX 5060 Ti.
 - `docs/PAPER_RERUN_GUIDE.md`: hướng dẫn từng bước để chạy lại pipeline paper.
 - `docs/CANONICAL_RUN_AND_CLASSIC_COMPARE.md`: chốt bộ run chuẩn và lệnh so sánh baseline classic.
-- `docs/paper_sync_issues.md`: danh sách các điểm còn lệch giữa paper và pipeline hiện tại.
+- `old/`: tài liệu, bản build và mã Paderborn/GUI cũ được giữ lại để tra cứu.
 
 ## Dữ liệu và manifest
 
@@ -37,12 +40,12 @@ Repository này chứa một pipeline đa phương thức gọn nhẹ cho bài t
 ## Bắt đầu nhanh
 
 1. Chạy lại pipeline paper theo cách chuẩn
-   - `python scripts/run_paper_sync.py --python .venv/Scripts/python.exe --sync-figures`
+   - `python3 scripts/run_paper_sync.py --sync-figures`
 
 2. Chạy lại paper theo từng bước thủ công
-   - `python train_logs.py --config configs/best_temporal.yaml`
-   - `python eval_logs.py --config configs/best_temporal.yaml --ckpt runs/paper_sync/temporal/best.pt`
-   - `python eval_logs.py --config configs/best_fullrange_eval.yaml --ckpt runs/paper_sync/temporal/best.pt --agg vote`
+   - `python3 train_logs.py --config configs/best_temporal.yaml`
+   - `python3 eval_logs.py --config configs/best_temporal.yaml --ckpt runs/paper_sync/temporal/best.pt`
+   - `python3 eval_logs.py --config configs/best_fullrange_eval.yaml --ckpt runs/paper_sync/temporal/best.pt --agg vote`
 
 3. Các config phát triển kiểu cũ
    - Chỉ dùng khi thật sự cần tra cứu các nhánh cũ hoặc ablation lịch sử
@@ -72,7 +75,7 @@ Repository này chứa một pipeline đa phương thức gọn nhẹ cho bài t
 
 - Chạy pipeline `paper_sync` theo hướng dẫn trong `docs/PAPER_RERUN_GUIDE.md`.
 - Artifact được sinh ra dưới `runs/paper_sync/...`.
-- Bản đã chọn để dùng cho paper sẽ được sync vào `figures/stratified`, `figures/temporal` và `figures/fullrange`.
+- Bản đã chọn để dùng cho paper sẽ được sync vào `paper/figures/stratified`, `paper/figures/temporal` và `paper/figures/fullrange`.
 
 ## Ghi nhận nguồn gốc
 
