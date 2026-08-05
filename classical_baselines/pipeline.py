@@ -16,7 +16,7 @@ from sklearn.svm import SVC
 
 from datasets.logs_ttf import LogsTTFDataset
 
-from classical_baselines.features import resolve_feature_extractor
+from classical_baselines.features import feature_uses_full_signal, resolve_feature_extractor
 
 
 CLASS_NAMES = [None] * len(LogsTTFDataset.CLASS_MAP)
@@ -116,15 +116,15 @@ def extract_window_features(
 ) -> np.ndarray:
     cap = int(seconds_cap * sampling_rate) if seconds_cap else None
     arr = read_signal_csv(item["path"], max_rows=cap, cache_dir=cache_dir)
-    vib = arr[:, :2]
+    source = arr if feature_uses_full_signal(feature_name) else arr[:, :2]
     extractor = resolve_feature_extractor(feature_name)
-    windows = make_windows(vib.shape[0], win, hop)
+    windows = make_windows(source.shape[0], win, hop)
     if isinstance(max_windows, int) and max_windows > 0 and len(windows) > max_windows:
         indices = np.linspace(0, len(windows) - 1, max_windows, dtype=int)
         windows = [windows[index] for index in indices]
     feats = []
     for s, e in windows:
-        feats.append(extractor(vib[s:e]))
+        feats.append(extractor(source[s:e]))
     if not feats:
         return np.zeros((0, 8), dtype=np.float32)
     return np.stack(feats, axis=0).astype(np.float32)

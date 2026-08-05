@@ -31,11 +31,12 @@ from scripts.search_classical_filecv import file_features, fit_files, predict_fi
 
 
 CLASS_NAMES = ("healthy", "degrading", "fault")
+FEATURE_NAMES = ("vib_stats_8d", "vib_stats_26d", "vib_temp_stats_32d")
 
 
 def candidates() -> list[dict]:
     rows = []
-    for feature in ("vib_stats_8d", "vib_stats_26d"):
+    for feature in FEATURE_NAMES:
         for c_value, gamma in itertools.product((0.1, 1.0, 10.0, 100.0), ("scale", 0.001, 0.01, 0.1)):
             rows.append({"feature": feature, "model": "svm", "C": c_value, "gamma": gamma})
         for c_value in (0.1, 1.0, 10.0, 100.0):
@@ -86,7 +87,7 @@ def main() -> int:
 
     base = yaml.safe_load((ROOT / args.config).read_text(encoding="utf-8"))
     feature_data = {}
-    for feature in ("vib_stats_8d", "vib_stats_26d"):
+    for feature in FEATURE_NAMES:
         cfg = copy.deepcopy(base)
         cfg["classical"]["feature_name"] = feature
         feature_data[feature] = {

@@ -121,7 +121,7 @@ P1 đạt tiêu chí nội bộ trên validation, nhưng không thể kết lu�
 - Nếu cần probability, dùng calibration group-aware theo file; tránh calibration CV ở cấp window.
 - [x] So sánh Logistic Regression và Random Forest; chỉ thêm XGBoost/LightGBM nếu dependency được khóa và CV chứng minh cần thiết.
 - [x] Mở rộng handcrafted feature bằng kurtosis, skewness, impulse/shape/clearance factor và band energy; đã so sánh bộ 8-D với 26-D trên cùng folds.
-- Thử vibration + temperature handcrafted baseline để kiểm tra giá trị bổ sung của modality trước khi tăng độ phức tạp deep model.
+- [x] Thử vibration + temperature handcrafted baseline để kiểm tra giá trị bổ sung của modality trước khi tăng độ phức tạp deep model.
 
 Kết quả P2 hiện tại: manifest chỉ chứa một `run1`, nên không thể chạy leave-one-run-out/cross-bearing. SVM được chọn hoàn toàn bằng five-fold stratified CV ở cấp file trên 76 train file, tối đa 32 window/file; winner `C=1`, `gamma=0.1`. Train-CV Macro-F1 `0.8157 ± 0.1576`; đánh giá một lần trên 26 validation file đạt Accuracy `0.8462`, Macro-F1 `0.8631`, class F1 `0.8750/0.7143/1.0000`. Fold CV yếu nhất chỉ đạt Macro-F1 `0.5582`, cho thấy độ nhạy theo file-group còn lớn. Artifact: `revision_artifacts/svm_filecv_validation/summary.md`.
 
@@ -131,7 +131,9 @@ Chạy lại:
 python scripts/search_classical_filecv.py
 ```
 
-Feature/algorithm ablation gồm 48 cấu hình trên đúng năm folds đã hoàn thành. Winner là SVM `C=0.1`, `gamma=0.1` với vibration 26-D: train-CV Macro-F1 `0.8416 ± 0.0914`, cao hơn SVM 8-D `0.8157 ± 0.1576` và ổn định hơn giữa folds. Winner đạt validation Accuracy/Macro-F1 `1.0000`, nhưng validation đã bão hòa nên không được xem là bằng chứng test mới. Logistic Regression 26-D `C=10` đứng thứ hai với CV Macro-F1 `0.8295 ± 0.1597`; Random Forest tốt nhất đạt `0.7904 ± 0.1740`. Artifact: `revision_artifacts/classical_feature_filecv/summary.md`.
+Feature/algorithm ablation gồm 72 cấu hình trên đúng năm folds đã hoàn thành. Với vibration-only, winner là SVM `C=0.1`, `gamma=0.1` dùng 26-D: CV Macro-F1 `0.8416 ± 0.0914`. Khi nối temperature stats 6-D thành bộ 32-D, global winner chuyển thành Random Forest 200 cây, depth 12, leaf 1 với CV Macro-F1 `0.9634 ± 0.0337`; cả năm folds đạt ít nhất `0.9348`. Winner validation Accuracy/Macro-F1 `1.0000`, nhưng validation đã bão hòa nên không được xem là bằng chứng test mới. Artifact: `revision_artifacts/classical_feature_filecv/summary.md`.
+
+Mức tăng `+0.1218` CV Macro-F1 và độ lệch giảm từ `0.0914` xuống `0.0337` cho thấy temperature hữu ích mạnh trong within-run file-CV. Tuy nhiên toàn bộ file thuộc cùng một trajectory `run1`, nên temperature có thể là proxy cho thời gian/TTF. Cần temperature-only file-CV, permutation importance và run/bearing mới trước khi claim sensor fusion generalization.
 
 ```bash
 python scripts/compare_classical_filecv.py

@@ -1,13 +1,13 @@
 # Checklist chạy revision bài báo
 
-Cập nhật gần nhất: **2026-08-05 22:49 ICT**.
+Cập nhật gần nhất: **2026-08-05 22:57 ICT**.
 
 File này là nhật ký vận hành và checklist resume cho quy trình revision. Kết quả chính phải đến từ held-out multi-class test ở cấp file. Hyperparameter chỉ được chọn bằng validation Macro-F1; không mở test trong lúc search.
 
 ## Trạng thái nhanh
 
 - Queue v2: **đã hoàn thành**.
-- Công việc hiện tại: P2 vibration feature/algorithm ablation đã hoàn thành; bước tiếp theo là handcrafted vibration+temperature file-CV ablation, không mở lại locked test.
+- Công việc hiện tại: P2 vibration+temperature file-CV đã hoàn thành; bước tiếp theo là temperature-only file-CV và feature/permutation audit để kiểm tra TTF proxy, không mở lại locked test.
 - Search v1: hoàn thành 24/24 multimodal và 16/16 vibration-only, giữ lại làm audit trail nhưng không dùng cho confirmation vì có 23 cảnh báo scheduler/optimizer.
 - Multimodal v2 đã hoàn thành: `24/24` trial và confirmation đủ 5 seed.
 - Vibration-only v2 đã hoàn thành: `16/16` trial và confirmation đủ 5 seed.
@@ -180,6 +180,7 @@ sed -n '1,40p' runs/revision/svm_vib8_stratified/report_test.txt
 - [x] Xác nhận manifest chỉ có một `run1`; không giả lập leave-one-run-out/cross-bearing.
 - [x] Chọn SVM C/gamma bằng five-fold stratified file-grouped CV trên train, mean decision-score aggregation.
 - [x] So sánh vibration 8-D/26-D với SVM, Logistic Regression và Random Forest trên cùng file folds.
+- [x] So sánh handcrafted vibration 26-D với vibration+temperature 32-D trên cùng folds.
 - [ ] Bổ sung efficiency: params, model size, STFT/model/end-to-end latency, throughput và memory.
 - [ ] Bổ sung robustness: vibration noise, temperature missing/drift và mất một vibration axis.
 - [ ] Nếu không có thêm run/bearing, hạ claim về within-run file-level classification.
@@ -201,6 +202,7 @@ Diễn giải và quyết định:
 - Đây là kết quả exploratory validation, không được đặt cạnh locked-test SVM/deep như một so sánh test trực tiếp. Validation đã bão hòa nên không thể dùng để chứng minh normalization cải thiện generalization; cần group-CV/validation run mới và tuyệt đối không chọn cấu hình bằng locked test đã xem.
 - SVM file-grouped CV winner là `C=1`, `gamma=0.1`, mean decision score. Train-CV Macro-F1 `0.8157 ± 0.1576`; validation Accuracy `0.8462`, Macro-F1 `0.8631`. Đây vẫn là within-run CV vì manifest chỉ có `run1`; fold thấp nhất `0.5582` cho thấy chưa ổn định theo file-group.
 - Feature/algorithm winner là SVM vibration 26-D `C=0.1`, `gamma=0.1`, CV Macro-F1 `0.8416 ± 0.0914`; bộ 8-D tốt nhất đạt `0.8157 ± 0.1576`. Logistic Regression 26-D tốt nhất đạt `0.8295 ± 0.1597`, Random Forest tốt nhất `0.7904 ± 0.1740`. Global CV winner được đánh giá validation đúng một lần và đạt 1.0000; không xem đây là test evidence.
+- Khi thêm temperature stats 6-D, Random Forest 32-D trở thành global winner: CV Macro-F1 `0.9634 ± 0.0337`, tăng `0.1218` so với vibration 26-D winner và fold thấp nhất `0.9348`. Validation đạt 1.0000 nhưng không phải test evidence. Vì chỉ có `run1`, cần kiểm tra temperature có đang proxy cho TTF hay không.
 - SVM hiện là model mạnh nhất trên test này; Macro-F1 cao hơn multimodal trung bình 0.3137 và vibration-only trung bình 0.4367.
 - Multimodal tốt hơn vibration-only trung bình nhưng cả hai deep model rất không ổn định qua seed và có hiện tượng bỏ hẳn một lớp.
 - SVM dùng cấu hình cố định `C=1`, RBF, `gamma=scale`, balanced class weight, StandardScaler và mean-probability file aggregation. Cấu hình này chưa được tune trên validation; vì test đã được xem, không được tune C/gamma hoặc chọn thuật toán mới dựa trên kết quả test hiện tại rồi tiếp tục báo cáo như confirmation độc lập.
@@ -253,3 +255,4 @@ python paper/run_revision.py latex
 - **2026-08-05 20:43 ICT:** chạy multimodal train-normalized seeds 42–46 chỉ trên validation; cả năm seed đạt Macro-F1 1.0000. Audit train-only xác nhận balanced sampler gần đều và cả ba nhánh nhận gradient từ mọi lớp. Validation đã bão hòa, vì vậy quyết định chuyển sang group-CV/run độc lập thay vì mở lại locked test.
 - **2026-08-05 22:44 ICT:** xác nhận dataset chỉ có một `run1`, không đủ leave-one-run-out. Chạy grid 16 SVM bằng five-fold stratified file-grouped CV trên train và mean decision aggregation; winner `C=1`, `gamma=0.1`, CV Macro-F1 `0.8157 ± 0.1576`, validation Macro-F1 `0.8631`. Locked test không được khởi tạo.
 - **2026-08-05 22:49 ICT:** thêm vibration feature 26-D và so sánh 48 tổ hợp feature/model trên cùng five file-folds. Winner SVM 26-D `C=0.1`, `gamma=0.1` đạt CV Macro-F1 `0.8416 ± 0.0914`; global winner đạt validation 1.0000. Locked test không được khởi tạo; bước tiếp theo là vibration+temperature handcrafted ablation.
+- **2026-08-05 22:57 ICT:** mở rộng ablation lên 72 cấu hình bằng handcrafted vibration+temperature 32-D. Random Forest depth 12/leaf 1 đạt CV Macro-F1 `0.9634 ± 0.0337`, vượt vibration-only winner `0.8416 ± 0.0914`; validation 1.0000. Locked test không được khởi tạo; ghi rõ nguy cơ temperature proxy cho TTF trong single-run trajectory.

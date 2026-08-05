@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from features.temp_features import temp_stats_window
+
 
 def _sanitize_window(x: np.ndarray) -> np.ndarray:
     x = np.asarray(x, dtype=np.float32)
@@ -62,10 +64,24 @@ def vib_stats_26d(vib_window: np.ndarray) -> np.ndarray:
     return np.nan_to_num(np.asarray(feats, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def vib_temp_stats_32d(signal_window: np.ndarray) -> np.ndarray:
+    """Concatenate vibration 26-D with bearing/ambient temperature stats 6-D."""
+    signal = np.asarray(signal_window, dtype=np.float32)
+    if signal.ndim != 2 or signal.shape[1] < 4:
+        raise ValueError("Expected multimodal window with at least 4 columns.")
+    return np.concatenate([
+        vib_stats_26d(signal[:, :2]),
+        temp_stats_window(signal[:, 2:4]),
+    ]).astype(np.float32, copy=False)
+
+
 FEATURE_EXTRACTORS = {
     "vib_stats_8d": vib_stats_8d,
     "vib_stats_26d": vib_stats_26d,
+    "vib_temp_stats_32d": vib_temp_stats_32d,
 }
+
+FULL_SIGNAL_FEATURES = {"vib_temp_stats_32d"}
 
 
 def resolve_feature_extractor(name: str):
@@ -73,3 +89,7 @@ def resolve_feature_extractor(name: str):
     if key not in FEATURE_EXTRACTORS:
         raise ValueError(f"Unknown classical feature extractor: {name}")
     return FEATURE_EXTRACTORS[key]
+
+
+def feature_uses_full_signal(name: str) -> bool:
+    return (name or "").strip().lower() in FULL_SIGNAL_FEATURES
