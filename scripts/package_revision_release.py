@@ -86,6 +86,10 @@ def main() -> int:
         for filename in ("statistics.md", "statistics.json"):
             copy_required(statistics_root / filename, package_root / "statistics" / filename)
 
+        diagnostics_root = ROOT / "paper/revision_artifacts/deep_collapse_diagnostics"
+        for filename in ("diagnostics.md", "diagnostics.json"):
+            copy_required(diagnostics_root / filename, package_root / "diagnostics" / filename)
+
         files = sorted(path for path in package_root.rglob("*") if path.is_file())
         manifest = {
             "artifact_set": "bearing-revision-v2",

@@ -71,13 +71,26 @@ Raw CSV phải được đặt trong `data/` theo `data/manifest.csv`. Dataset, 
 
 ### P1 — Chẩn đoán deep model collapse
 
-1. Lưu prediction và logits cấp file cho mọi seed.
-2. Kiểm tra confusion matrix, class prior, sampler và gradient theo lớp.
-3. So sánh train/validation learning curves và calibration.
-4. Kiểm tra temperature feature distribution theo split; mọi scaler phải fit chỉ trên train.
-5. Chạy temperature-only baseline để xác định temperature có tín hiệu độc lập hay không.
+1. [x] Lưu prediction và logits cấp file cho mọi seed.
+2. [x] Kiểm tra class collapse, confidence và độ nhất trí giữa seed.
+3. [x] So sánh best-validation với test theo từng seed.
+4. [x] Kiểm tra thang đo và distribution của temperature feature theo split.
+5. [ ] Kiểm tra sampler/gradient theo lớp trên một validation experiment mới.
+6. [ ] Chạy temperature-only baseline với scaler chỉ fit trên train.
 
-Tiêu chí qua P1: không lớp nào có F1 bằng 0 ở phần lớn seed và độ lệch chuẩn Macro-F1 giảm rõ rệt trên validation/group-CV.
+Báo cáo chẩn đoán hiện tại: `revision_artifacts/deep_collapse_diagnostics/diagnostics.md`. Có 9/10 seed bỏ hẳn ít nhất một lớp, không có test file nào được cả năm seed dự đoán nhất trí, và khoảng cách best-validation đến test Macro-F1 là `0.2797–0.9333`. Sáu temperature descriptor đang đi vào nhánh tuyến tính theo đơn vị thô; tỷ lệ giữa độ lệch chuẩn lớn nhất và nhỏ nhất trên train là `2768.14`. Phân tích test này chỉ dùng để giải thích artifact đã khóa, không được dùng để chọn model tiếp theo.
+
+Tạo lại báo cáo:
+
+```bash
+python scripts/diagnose_deep_collapse.py \
+  --multimodal-root runs/revision_confirm_5060_v2 \
+  --vibration-root runs/revision_confirm_vibration_5060_v2 \
+  --output-dir paper/revision_artifacts/deep_collapse_diagnostics \
+  --windows-per-file 32
+```
+
+Tiêu chí qua P1: temperature-only và multimodal đã được đánh giá bằng validation/group-CV, không lớp nào có F1 bằng 0 ở phần lớn seed và độ lệch chuẩn Macro-F1 giảm rõ rệt. Chưa đạt tiêu chí này.
 
 ### P2 — Baseline và feature engineering trên validation mới
 
