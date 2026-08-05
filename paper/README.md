@@ -76,7 +76,7 @@ Raw CSV phải được đặt trong `data/` theo `data/manifest.csv`. Dataset, 
 3. [x] So sánh best-validation với test theo từng seed.
 4. [x] Kiểm tra thang đo và distribution của temperature feature theo split.
 5. [ ] Kiểm tra sampler/gradient theo lớp trên một validation experiment mới.
-6. [ ] Chạy temperature-only baseline với scaler chỉ fit trên train.
+6. [x] Chạy temperature-only baseline với scaler chỉ fit trên train.
 
 Báo cáo chẩn đoán hiện tại: `revision_artifacts/deep_collapse_diagnostics/diagnostics.md`. Có 9/10 seed bỏ hẳn ít nhất một lớp, không có test file nào được cả năm seed dự đoán nhất trí, và khoảng cách best-validation đến test Macro-F1 là `0.2797–0.9333`. Sáu temperature descriptor đang đi vào nhánh tuyến tính theo đơn vị thô; tỷ lệ giữa độ lệch chuẩn lớn nhất và nhỏ nhất trên train là `2768.14`. Phân tích test này chỉ dùng để giải thích artifact đã khóa, không được dùng để chọn model tiếp theo.
 
@@ -91,6 +91,26 @@ python scripts/diagnose_deep_collapse.py \
 ```
 
 Tiêu chí qua P1: temperature-only và multimodal đã được đánh giá bằng validation/group-CV, không lớp nào có F1 bằng 0 ở phần lớn seed và độ lệch chuẩn Macro-F1 giảm rõ rệt. Chưa đạt tiêu chí này.
+
+Temperature-only validation đã hoàn thành trên seeds 42–46, cùng split seed `20260803`, không đánh giá locked test:
+
+| Metric | Mean ± std |
+|---|---:|
+| Accuracy | 0.7385 ± 0.0322 |
+| Macro-F1 | 0.7776 ± 0.0264 |
+| Healthy F1 | 0.7704 ± 0.0257 |
+| Degrading F1 | 0.5910 ± 0.0760 |
+| Fault F1 | 0.9714 ± 0.0639 |
+
+MLP `6→32→3` chỉ có 323 tham số. Scaler được fit từ 2.432 window train lấy đều trên 76 file; cả năm seed dự đoán đủ ba lớp. Kết quả tại `revision_artifacts/temperature_only_validation/summary.md`. Chạy lại:
+
+```bash
+python scripts/run_temperature_validation.py \
+  --seeds 42,43,44,45,46 \
+  --continue
+```
+
+Bước P1 tiếp theo là chạy một multimodal validation ablation cố định với cùng train-only scaler và kiểm tra gradient/sampler; không mở test.
 
 ### P2 — Baseline và feature engineering trên validation mới
 

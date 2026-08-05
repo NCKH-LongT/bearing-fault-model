@@ -90,6 +90,27 @@ def main() -> int:
         for filename in ("diagnostics.md", "diagnostics.json"):
             copy_required(diagnostics_root / filename, package_root / "diagnostics" / filename)
 
+        temperature_root = ROOT / "paper/revision_artifacts/temperature_only_validation"
+        for filename in ("summary.md", "aggregate.json"):
+            copy_required(temperature_root / filename, package_root / "temperature_validation" / filename)
+
+        temperature_runs = ROOT / "runs/revision_temperature_only_validation"
+        for filename in ("summary.md", "aggregate.json"):
+            copy_required(temperature_runs / filename, package_root / "temperature_only" / filename)
+        for seed in (42, 43, 44, 45, 46):
+            for filename in (
+                "best.pt",
+                "config.yaml",
+                "train_log.csv",
+                "validation_report.txt",
+                "validation_confusion_matrix.csv",
+                "validation_summary.json",
+            ):
+                copy_required(
+                    temperature_runs / f"seed_{seed}" / filename,
+                    package_root / "temperature_only" / f"seed_{seed}" / filename,
+                )
+
         files = sorted(path for path in package_root.rglob("*") if path.is_file())
         manifest = {
             "artifact_set": "bearing-revision-v2",

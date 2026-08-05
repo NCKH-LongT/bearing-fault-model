@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from datasets.logs_ttf import LogsTTFDataset
 from features.spectrogram import SpectrogramTransform
-from features.temp_features import resolve_temp_feature
+from features.temp_features import StandardizedTempFeature, resolve_temp_feature
 from models.resnet2d import ResNet18Small
 
 try:
@@ -104,6 +104,7 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
 
     model_cfg = cfg.get("model", {}) or {}
     use_temp = bool(model_cfg.get("use_temp", True))
+    use_vibration = bool(model_cfg.get("use_vibration", True))
     temp_feat_fn = None
     temp_feat_dim = 0
     temp_ctx_seconds = None
@@ -112,6 +113,11 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         temp_cfg = model_cfg.get("temp_feature", {}) or {}
         temp_type = temp_cfg.get("type", "stats6")
         temp_feat_fn, temp_feat_dim = resolve_temp_feature(temp_type)
+        norm_cfg = temp_cfg.get("normalization", {}) or {}
+        if bool(norm_cfg.get("enabled", False)):
+            if norm_cfg.get("mean") is None or norm_cfg.get("std") is None:
+                raise ValueError("Run-local config lacks train-fitted temperature normalization stats")
+            temp_feat_fn = StandardizedTempFeature(temp_feat_fn, norm_cfg["mean"], norm_cfg["std"])
         temp_ctx_seconds = temp_cfg.get("context_seconds")
         temp_ctx_seconds = float(temp_ctx_seconds) if temp_ctx_seconds is not None else None
         temp_ctx_causal = bool(temp_cfg.get("causal", True))
@@ -134,6 +140,8 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         temp_feat_dim=temp_feat_dim,
         temp_context_seconds=temp_ctx_seconds,
         temp_context_causal=temp_ctx_causal,
+        use_vibration=use_vibration,
+        temp_cache_max_windows=(model_cfg.get("temp_only_max_windows_per_file", 32) if not use_vibration else None),
         cache_dir=cfg.get("cache_dir"),
         samples_per_file=1,
         exclude_list=cfg.get("exclude_list"),
@@ -149,7 +157,12 @@ def main(cfg_path: str, ckpt_path: str, show: bool = False, agg: str = "mean"):
         pin_memory=pin_mem,
     )
 
-    model = ResNet18Small(in_ch=2, num_classes=cfg["num_classes"], temp_feat_dim=temp_feat_dim)
+    model = ResNet18Small(
+        in_ch=2,
+        num_classes=cfg["num_classes"],
+        temp_feat_dim=temp_feat_dim,
+        use_vibration=use_vibration,
+    )
     # Safe, forward-compatible load: prefer weights_only and accept both formats
     state = torch.load(ckpt_path, map_location=device, weights_only=True)
     sd = state["model"] if isinstance(state, dict) and "model" in state else state

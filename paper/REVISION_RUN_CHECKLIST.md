@@ -1,13 +1,13 @@
 # Checklist chạy revision bài báo
 
-Cập nhật gần nhất: **2026-08-05 20:02 ICT**.
+Cập nhật gần nhất: **2026-08-05 20:15 ICT**.
 
 File này là nhật ký vận hành và checklist resume cho quy trình revision. Kết quả chính phải đến từ held-out multi-class test ở cấp file. Hyperparameter chỉ được chọn bằng validation Macro-F1; không mở test trong lúc search.
 
 ## Trạng thái nhanh
 
 - Queue v2: **đã hoàn thành**.
-- Công việc hiện tại: đã hoàn thành thống kê locked test và chẩn đoán deep collapse; bước tiếp theo là temperature-only/train-only normalization bằng validation hoặc group-CV.
+- Công việc hiện tại: temperature-only validation 5 seed đã hoàn thành; bước tiếp theo là multimodal train-only-normalization ablation và kiểm tra sampler/gradient, vẫn không mở test.
 - Search v1: hoàn thành 24/24 multimodal và 16/16 vibration-only, giữ lại làm audit trail nhưng không dùng cho confirmation vì có 23 cảnh báo scheduler/optimizer.
 - Multimodal v2 đã hoàn thành: `24/24` trial và confirmation đủ 5 seed.
 - Vibration-only v2 đã hoàn thành: `16/16` trial và confirmation đủ 5 seed.
@@ -174,7 +174,7 @@ sed -n '1,40p' runs/revision/svm_vib8_stratified/report_test.txt
 - [x] Tính bootstrap 95% CI ở cấp file với 10.000 replicate.
 - [x] Thực hiện paired bootstrap và McNemar exact ở cấp file.
 - [x] Chẩn đoán prediction collapse, seed agreement, validation–test gap và thang đo temperature feature.
-- [ ] Bổ sung temperature-only baseline.
+- [x] Bổ sung temperature-only baseline bằng scaler fit trên train; locked test không được đánh giá.
 - [ ] Bổ sung efficiency: params, model size, STFT/model/end-to-end latency, throughput và memory.
 - [ ] Bổ sung robustness: vibration noise, temperature missing/drift và mất một vibration axis.
 - [ ] Nếu không có thêm run/bearing, hạ claim về within-run file-level classification.
@@ -190,7 +190,9 @@ Kết quả held-out test hiện tại:
 Diễn giải và quyết định:
 
 - Báo cáo `paper/revision_artifacts/deep_collapse_diagnostics/diagnostics.md` xác nhận 9/10 lượt deep bỏ hẳn ít nhất một lớp, 0/27 file có dự đoán nhất trí giữa năm seed và validation–test Macro-F1 gap `0.2797–0.9333`.
-- Temperature descriptor chưa được chuẩn hóa theo train và có raw train standard-deviation scale ratio `2768.14`. Thử nghiệm tiếp theo phải thêm scaler fit trên train, temperature-only baseline và đánh giá validation/group-CV; tuyệt đối không chọn cấu hình bằng locked test đã xem.
+- Temperature descriptor cũ chưa được chuẩn hóa theo train và có raw train standard-deviation scale ratio `2768.14`. Pipeline mới đã thêm scaler fit trên train và lưu mean/std trong run-local config.
+- Temperature-only MLP `6→32→3` (323 tham số) trên five-seed validation đạt Accuracy `0.7385 ± 0.0322`, Macro-F1 `0.7776 ± 0.0264`; cả năm seed dự đoán đủ ba lớp. Artifact: `paper/revision_artifacts/temperature_only_validation/`.
+- Đây là kết quả exploratory validation, không được đặt cạnh locked-test SVM/deep như một so sánh test trực tiếp. Bước kế tiếp là multimodal normalized ablation trên validation; tuyệt đối không chọn cấu hình bằng locked test đã xem.
 - SVM hiện là model mạnh nhất trên test này; Macro-F1 cao hơn multimodal trung bình 0.3137 và vibration-only trung bình 0.4367.
 - Multimodal tốt hơn vibration-only trung bình nhưng cả hai deep model rất không ổn định qua seed và có hiện tượng bỏ hẳn một lớp.
 - SVM dùng cấu hình cố định `C=1`, RBF, `gamma=scale`, balanced class weight, StandardScaler và mean-probability file aggregation. Cấu hình này chưa được tune trên validation; vì test đã được xem, không được tune C/gamma hoặc chọn thuật toán mới dựa trên kết quả test hiện tại rồi tiếp tục báo cáo như confirmation độc lập.
@@ -239,3 +241,4 @@ python paper/run_revision.py latex
 - **2026-08-05 11:52 ICT:** hợp nhất hướng dẫn hiện hành vào `paper/README.md`, thêm roadmap P0–P5, thêm script đóng gói winner artifact và chuẩn bị GitHub Release `revision-v2-artifacts-20260805`. Xóa các guide trong `paper/` đã bị tài liệu canonical thay thế.
 - **2026-08-05 19:48 ICT:** xuất file ID, mean logits/probabilities và prediction cho 10 checkpoint deep; xuất file ID/score cho SVM; chạy 10.000 file-level bootstrap replicate, paired bootstrap và McNemar exact. Báo cáo lưu tại `paper/revision_artifacts/locked_test_statistics/`.
 - **2026-08-05 20:02 ICT:** chạy chẩn đoán deep collapse. Xác nhận 9/10 seed bỏ ít nhất một lớp, seed agreement rất thấp, validation–test gap lớn và temperature feature chưa được scale. Lưu báo cáo tái lập tại `paper/revision_artifacts/deep_collapse_diagnostics/`; khóa test khỏi mọi quyết định nâng cấp tiếp theo.
+- **2026-08-05 20:15 ICT:** triển khai train-only temperature standardization và temperature-only MLP không tính STFT; chạy seeds 42–46 chỉ trên validation. Kết quả Accuracy `0.7385 ± 0.0322`, Macro-F1 `0.7776 ± 0.0264`, không seed nào bỏ lớp. Lưu artifact tại `paper/revision_artifacts/temperature_only_validation/`; locked test không được gọi.

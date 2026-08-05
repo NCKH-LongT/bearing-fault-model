@@ -1,6 +1,24 @@
 import numpy as np
 
 
+class StandardizedTempFeature:
+    """Apply fixed train-fitted standardization to a temperature extractor."""
+
+    def __init__(self, feature_fn, mean, std, epsilon: float = 1e-6):
+        self.feature_fn = feature_fn
+        self.mean = np.asarray(mean, dtype=np.float32)
+        raw_std = np.asarray(std, dtype=np.float32)
+        if self.mean.shape != raw_std.shape:
+            raise ValueError("Temperature normalization mean/std shapes differ")
+        self.std = np.maximum(raw_std, float(epsilon))
+
+    def __call__(self, temp_win: np.ndarray) -> np.ndarray:
+        features = np.asarray(self.feature_fn(temp_win), dtype=np.float32)
+        if features.shape != self.mean.shape:
+            raise ValueError("Temperature feature dimension does not match normalization stats")
+        return ((features - self.mean) / self.std).astype(np.float32, copy=False)
+
+
 def temp_stats_window(temp_win: np.ndarray) -> np.ndarray:
     """
     temp_win: (win,2) -> columns: [temp_bearing, temp_atm]
