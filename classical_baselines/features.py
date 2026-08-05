@@ -30,8 +30,41 @@ def vib_stats_8d(vib_window: np.ndarray) -> np.ndarray:
     return np.asarray(feats, dtype=np.float32)
 
 
+def vib_stats_26d(vib_window: np.ndarray) -> np.ndarray:
+    """Extended 26-D vibration descriptors with shape and band-energy statistics."""
+    xw = _sanitize_window(vib_window)
+    feats = []
+    for ch in range(2):
+        x = xw[:, ch].astype(np.float64, copy=False)
+        abs_x = np.abs(x)
+        mean_abs = float(np.mean(abs_x))
+        rms = float(np.sqrt(np.mean(x * x) + 1e-12))
+        std = float(np.std(x) + 1e-12)
+        peak = float(np.max(abs_x))
+        centered = x - float(np.mean(x))
+        normalized = centered / std
+        skewness = float(np.mean(normalized ** 3))
+        kurtosis = float(np.mean(normalized ** 4))
+        crest = float(peak / (rms + 1e-12))
+        shape = float(rms / (mean_abs + 1e-12))
+        impulse = float(peak / (mean_abs + 1e-12))
+        mean_sqrt_abs = float(np.mean(np.sqrt(abs_x)))
+        clearance = float(peak / (mean_sqrt_abs ** 2 + 1e-12))
+        feats.extend([rms, std, peak, crest, mean_abs, shape, impulse, clearance, skewness, kurtosis])
+
+        spectrum = np.fft.rfft(centered)
+        energy = np.abs(spectrum) ** 2
+        frequency = np.fft.rfftfreq(len(centered))
+        total = float(np.sum(energy) + 1e-12)
+        for lower, upper in ((0.0, 0.1), (0.1, 0.3), (0.3, 0.5 + 1e-12)):
+            mask = (frequency >= lower) & (frequency < upper)
+            feats.append(float(np.sum(energy[mask]) / total))
+    return np.nan_to_num(np.asarray(feats, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+
+
 FEATURE_EXTRACTORS = {
     "vib_stats_8d": vib_stats_8d,
+    "vib_stats_26d": vib_stats_26d,
 }
 
 
@@ -40,4 +73,3 @@ def resolve_feature_extractor(name: str):
     if key not in FEATURE_EXTRACTORS:
         raise ValueError(f"Unknown classical feature extractor: {name}")
     return FEATURE_EXTRACTORS[key]
-

@@ -65,7 +65,13 @@ def fit_files(model: Pipeline, files: list[dict]) -> None:
 def predict_files(model: Pipeline, files: list[dict]) -> tuple[np.ndarray, np.ndarray, list[dict]]:
     truth, predicted, records = [], [], []
     for row in files:
-        scores = np.asarray(model.decision_function(row["features"]), dtype=float)
+        if hasattr(model, "decision_function"):
+            scores = np.asarray(model.decision_function(row["features"]), dtype=float)
+        elif hasattr(model, "predict_proba"):
+            scores = np.asarray(model.predict_proba(row["features"]), dtype=float)
+        else:
+            window_predictions = model.predict(row["features"])
+            scores = np.eye(len(model.classes_), dtype=float)[window_predictions]
         if scores.ndim == 1:
             scores = np.column_stack([-scores, scores])
         mean_score = scores.mean(axis=0)

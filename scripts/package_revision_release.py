@@ -143,6 +143,17 @@ def main() -> int:
         ):
             copy_required(svm_filecv / filename, package_root / "svm_filecv_validation" / filename)
 
+        classical_feature_cv = ROOT / "runs/revision_classical_feature_filecv"
+        for filename in (
+            "summary.md",
+            "results.json",
+            "model.pkl",
+            "validation_predictions.csv",
+            "validation_report.txt",
+            "validation_confusion_matrix.csv",
+        ):
+            copy_required(classical_feature_cv / filename, package_root / "classical_feature_filecv" / filename)
+
         files = sorted(path for path in package_root.rglob("*") if path.is_file())
         manifest = {
             "artifact_set": "bearing-revision-v2",
