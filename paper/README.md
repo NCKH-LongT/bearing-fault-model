@@ -177,6 +177,10 @@ Với một run duy nhất, claim phải giới hạn ở within-run file-level 
 - Efficiency: parameter count, model size, CPU/GPU latency, STFT time, throughput và peak memory.
 - Error analysis quanh Healthy–Degrading và Degrading–Fault boundaries.
 
+Classical P2 winner robustness/efficiency đã được đo trên validation, không mở locked test. Noise rung 20/10 dB không làm giảm Macro-F1 trên validation bão hòa, nhưng mất vibration X làm giảm `0.4946`, mất temperature giảm `0.4470`, và temperature drift +2°C giảm `0.4367`; mất vibration Y không làm thay đổi kết quả. Điều này cho thấy phụ thuộc bất đối xứng vào trục X và độ nhạy lớn với temperature availability/calibration. CPU feature extraction `2.458 ms/window`, RF inference `0.0363 ms/window`; ước lượng `79.82 ms/file` cho 32 window, chưa tính I/O. Model khoảng `2253.4 KiB`, 200 cây và 25.328 nodes. Artifact: `revision_artifacts/classical_robustness_efficiency/summary.md`.
+
+Đây là exploratory validation robustness, không phải locked-test robustness. Deep-model latency/memory và robustness vẫn cần đo riêng trước khi hoàn thiện bảng paper.
+
 Chỉ cập nhật `main.tex` sau khi bảng artifact mới có nguồn truy vết và protocol audit đi kèm.
 
 ## 5. Kết quả lịch sử
